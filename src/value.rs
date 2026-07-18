@@ -73,6 +73,28 @@ impl Value {
         *self.grad.borrow()
     }
 
+    // —— Backpropogate ————————————————————————————————————————————————————————————————————
+    // Base case: self's grad != 0
+    // NOTE: this does NOT work for MLP
+    pub fn backpropogate(&mut self, visited: &mut HashSet<usize>) {
+        if visited.contains(&self.id) { return; }
+        visited.insert(self.id);
+
+        let grads: Vec<f64> = self.parents.iter().enumerate().map(|(i, _)| {
+            match self.op {
+                "+"    => self.get_grad(),
+                "*"    => self.parents[(i+1) % 2].data * self.get_grad(),
+                "tanh" => (1.0 - self.data.powi(2)) * self.get_grad(),
+                _ => 0.0
+            }
+        }).collect();
+
+        self.parents.iter_mut().zip(grads.iter()).for_each(|(p, &g)| {
+            p.set_grad(p.get_grad() + g);
+            p.backpropogate(visited);
+        });
+    }
+
     // —— Activation ———————————————————————————————————————————————————————————————————————
     pub fn tanh(&self) -> Value {
         let x = self.data;

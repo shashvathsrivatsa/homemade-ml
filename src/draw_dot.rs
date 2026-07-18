@@ -47,7 +47,20 @@ fn trace(root: &crate::Value) -> (Vec<GNode>, Vec<GEdge>) {
 
 // ── Node width from content ────────────────────────────────────────────────
 
-fn node_width(node: &GNode) -> i32 {
+#[derive(Clone, Copy)]
+struct CellWidths {
+    label: i32,
+    data: i32,
+    grad: i32,
+}
+
+impl CellWidths {
+    fn total(self) -> i32 {
+        self.label + self.data + self.grad
+    }
+}
+
+fn natural_cell_widths(node: &GNode) -> CellWidths {
     let char_w  = 7_i32;
     let padding = 14_i32; // left + right per section
     let data_w  = format!("data={:.3}", node.data).len() as i32 * char_w + padding;
@@ -55,7 +68,7 @@ fn node_width(node: &GNode) -> i32 {
     let label_w = if node.label.is_empty() { 0 } else {
         (node.label.len() as i32 * char_w + padding).max(20)
     };
-    label_w + data_w + grad_w
+    CellWidths { label: label_w, data: data_w, grad: grad_w }
 }
 
 // ── Layout: topological rank (x) + vertical slot (y) ─────────────────────
@@ -70,8 +83,12 @@ fn node_width(node: &GNode) -> i32 {
 fn layout(
     nodes: &[GNode],
     edges: &[GEdge],
-    node_widths: &HashMap<usize, i32>,
-) -> (HashMap<usize, (i32, i32)>, HashMap<usize, (i32, i32)>) {
+    natural_widths: &HashMap<usize, CellWidths>,
+) -> (
+    HashMap<usize, (i32, i32)>,
+    HashMap<usize, (i32, i32)>,
+    HashMap<usize, CellWidths>,
+) {
     let mut downstream: HashMap<usize, Vec<usize>> = HashMap::new();
     let mut inputs: HashMap<usize, Vec<usize>> = HashMap::new();
     for e in edges {
@@ -111,11 +128,24 @@ fn layout(
     let mut by_rank: HashMap<i32, Vec<usize>> = HashMap::new();
     for n in nodes { by_rank.entry(rank[&n.id]).or_default().push(n.id); }
 
+    // Justify each column like a table: every label, data, and gradient cell
+    // takes the maximum width of that component within the column.
+    let mut cell_widths = natural_widths.clone();
+    for ids in by_rank.values() {
+        let max_label = ids.iter().map(|id| natural_widths[id].label).max().unwrap_or(0);
+        let max_data = ids.iter().map(|id| natural_widths[id].data).max().unwrap_or(0);
+        let max_grad = ids.iter().map(|id| natural_widths[id].grad).max().unwrap_or(0);
+        let justified = CellWidths { label: max_label, data: max_data, grad: max_grad };
+        for id in ids {
+            cell_widths.insert(*id, justified);
+        }
+    }
+
     // Max node width per column
     let mut col_max_w: HashMap<i32, i32> = HashMap::new();
     for n in nodes {
         let r = rank[&n.id];
-        let w = node_widths[&n.id];
+        let w = cell_widths[&n.id].total();
         let e = col_max_w.entry(r).or_insert(0);
         if w > *e { *e = w; }
     }
@@ -149,7 +179,7 @@ fn layout(
         let n = ids.len() as i32;
         for (slot, &id) in ids.iter().enumerate() {
             let node = nodes.iter().find(|n| n.id == id).unwrap();
-            let cx = column_left + node_widths[&id] / 2;
+            let cx = column_left + cell_widths[&id].total() / 2;
             let y = (slot as i32 - n / 2) * row_h + row_h / 2;
             val_pos.insert(id, (cx, y));
 
@@ -168,14 +198,15 @@ fn layout(
         }
     }
 
-    // Spread overlapping nodes in a column downward. Do not re-center the
-    // column afterward: derived nodes have already been placed at the vertical
-    // midpoint of their inputs, and translating the whole column would break
-    // that relationship.
-    let resolve = |ids: &[usize], val_pos: &mut HashMap<usize, (i32, i32)>, op_pos: &mut HashMap<usize, (i32, i32)>| {
+    // Spread overlapping nodes in a column. When every node is derived, keep
+    // the group centered around its original midpoint so sibling rows align
+    // with their parent rows. Mixed columns keep derived nodes fixed and move
+    // free-standing values (such as biases) out of the way.
+    let resolve = |ids: &[usize], re_center: bool, val_pos: &mut HashMap<usize, (i32, i32)>, op_pos: &mut HashMap<usize, (i32, i32)>| {
         if ids.len() < 2 { return; }
         let mut sorted: Vec<usize> = ids.to_vec();
         sorted.sort_by_key(|&id| val_pos[&id].1);
+        let target_mid = (val_pos[&sorted[0]].1 + val_pos[&sorted[sorted.len() - 1]].1) / 2;
 
         for i in 1..sorted.len() {
             let prev_y = val_pos[&sorted[i - 1]].1;
@@ -190,13 +221,25 @@ fn layout(
             }
         }
 
+        if re_center {
+            let resolved_mid =
+                (val_pos[&sorted[0]].1 + val_pos[&sorted[sorted.len() - 1]].1) / 2;
+            let offset = target_mid - resolved_mid;
+            for id in sorted {
+                let (cx, cy) = val_pos[&id];
+                val_pos.insert(id, (cx, cy + offset));
+                if let Some(&(ox, oy)) = op_pos.get(&id) {
+                    op_pos.insert(id, (ox, oy + offset));
+                }
+            }
+        }
     };
 
     // Phase 1: fix the leftmost column.
     let min_rank = sorted_ranks[0];
     if let Some(ids) = by_rank.get(&min_rank) {
         let ids = ids.clone();
-        resolve(&ids, &mut val_pos, &mut op_pos);
+        resolve(&ids, false, &mut val_pos, &mut op_pos);
     }
 
     // Phase 2: for each subsequent column left→right, center each node at
@@ -219,10 +262,11 @@ fn layout(
             }
         }
 
-        resolve(&ids, &mut val_pos, &mut op_pos);
+        let all_derived = ids.iter().all(|id| inputs.get(id).is_some_and(|v| !v.is_empty()));
+        resolve(&ids, all_derived, &mut val_pos, &mut op_pos);
     }
 
-    (val_pos, op_pos)
+    (val_pos, op_pos, cell_widths)
 }
 
 // ── draw_dot ───────────────────────────────────────────────────────────────
@@ -231,15 +275,18 @@ pub fn draw_dot(root: &crate::Value) {
     let path = "visualization.svg";
 
     let (nodes, edges) = trace(root);
-    let node_widths: HashMap<usize, i32> = nodes.iter().map(|n| (n.id, node_width(n))).collect();
-    let (val_pos, op_pos) = layout(&nodes, &edges, &node_widths);
+    let natural_widths: HashMap<usize, CellWidths> = nodes
+        .iter()
+        .map(|n| (n.id, natural_cell_widths(n)))
+        .collect();
+    let (val_pos, op_pos, cell_widths) = layout(&nodes, &edges, &natural_widths);
 
     // Canvas bounds: pad around all positions
     let pad    = 120_i32;
     let node_h =  26_i32;
     let op_rx  = 22_i32; // circle radius
 
-    let max_nw  = node_widths.values().cloned().max().unwrap_or(200);
+    let max_nw = cell_widths.values().map(|widths| widths.total()).max().unwrap_or(200);
     let all_x: Vec<i32> = val_pos.values().map(|&(x,_)| x).collect();
     let all_y: Vec<i32> = val_pos.values().map(|&(_,y)| y).collect();
     let min_x = all_x.iter().cloned().min().unwrap_or(0) - pad - max_nw;
@@ -291,7 +338,7 @@ pub fn draw_dot(root: &crate::Value) {
         let (fx, fy) = val_pos[&edge.from];
         let (tx, ty) = val_pos[&edge.to];
         let to_node  = node_map[&edge.to];
-        let from_hw  = node_widths[&edge.from] / 2;
+        let from_hw  = cell_widths[&edge.from].total() / 2;
 
         let x1 = sx(fx + from_hw);
         let y1 = sy(fy);
@@ -300,7 +347,7 @@ pub fn draw_dot(root: &crate::Value) {
             let (ox, oy) = op_pos[&edge.to];
             arrow(x1, y1, sx(ox - op_rx), sy(oy));
         } else {
-            let to_hw = node_widths[&edge.to] / 2;
+            let to_hw = cell_widths[&edge.to].total() / 2;
             arrow(x1, y1, sx(tx - to_hw), sy(ty));
         }
     }
@@ -308,14 +355,15 @@ pub fn draw_dot(root: &crate::Value) {
     // op ellipse → value box
     for (id, &(ox, oy)) in &op_pos {
         let (vx, vy) = val_pos[id];
-        let to_hw = node_widths[id] / 2;
+        let to_hw = cell_widths[id].total() / 2;
         arrow(sx(ox + op_rx), sy(oy), sx(vx - to_hw), sy(vy));
     }
 
     // ── draw value boxes ──────────────────────────────────────────────────
     for node in &nodes {
         let (cx, cy) = val_pos[&node.id];
-        let nw = node_widths[&node.id];
+        let widths = cell_widths[&node.id];
+        let nw = widths.total();
         let x0 = sx(cx - nw / 2);
         let y0 = sy(cy - node_h / 2);
         let x1 = sx(cx + nw / 2);
@@ -329,9 +377,6 @@ pub fn draw_dot(root: &crate::Value) {
             [(x0, y0), (x1, y1)],
             ShapeStyle::from(&WHITE).stroke_width(1),
         )).unwrap();
-
-        // approximate glyph dimensions for "sans-serif" 13pt
-        let char_w = 7_i32;
 
         // Draw text centered within an individual cell.
         let center_text = |text: &str, left: i32, right: i32| {
@@ -348,21 +393,18 @@ pub fn draw_dot(root: &crate::Value) {
 
         let data_str = format!("data={:.3}", node.data);
         let grad_str = format!("grad={:.3}", node.grad);
-        let grad_w = grad_str.len() as i32 * char_w + 14;
-
         // divider between data and grad sections
-        let div2 = x1 - grad_w;
+        let div2 = x1 - widths.grad;
         root_area.draw(&PathElement::new(
             vec![(div2, y0), (div2, y1)],
             ShapeStyle::from(&WHITE).stroke_width(1),
         )).unwrap();
         center_text(&grad_str, div2, x1);
 
-        if node.label.is_empty() {
+        if widths.label == 0 {
             center_text(&data_str, x0, div2);
         } else {
-            let label_w = (node.label.len() as i32 * char_w + 14).max(20);
-            let div1 = x0 + label_w;
+            let div1 = x0 + widths.label;
             root_area.draw(&PathElement::new(
                 vec![(div1, y0), (div1, y1)],
                 ShapeStyle::from(&WHITE).stroke_width(1),
@@ -443,9 +485,13 @@ mod tests {
             GEdge { from: 5, to: 8 }, GEdge { from: 10, to: 8 },
             GEdge { from: 8, to: 9 },
         ];
-        let widths = nodes.iter().map(|node| (node.id, node_width(node))).collect();
+        let natural_widths = nodes
+            .iter()
+            .map(|node| (node.id, natural_cell_widths(node)))
+            .collect();
 
-        let (positions, operation_positions) = layout(&nodes, &edges, &widths);
+        let (positions, operation_positions, widths) =
+            layout(&nodes, &edges, &natural_widths);
 
         for child in [3, 4, 5, 8, 9] {
             let parents: Vec<_> = edges.iter().filter(|edge| edge.to == child).collect();
@@ -456,9 +502,37 @@ mod tests {
         }
 
         assert_eq!(
-            positions[&5].0 - widths[&5] / 2,
-            positions[&10].0 - widths[&10] / 2,
+            positions[&5].0 - widths[&5].total() / 2,
+            positions[&10].0 - widths[&10].total() / 2,
             "nodes in the same column should share a left edge",
         );
+        assert_eq!(widths[&5].label, widths[&10].label);
+        assert_eq!(widths[&5].data, widths[&10].data);
+        assert_eq!(widths[&5].grad, widths[&10].grad);
+    }
+
+    #[test]
+    fn siblings_with_shared_parents_stay_aligned_with_parent_rows() {
+        let nodes = vec![
+            GNode { id: 5, label: "f".into(), data: 0.0, grad: 0.0, op: "*" },
+            GNode { id: 3, label: "d".into(), data: 0.0, grad: 0.0, op: "*" },
+            GNode { id: 1, label: "a".into(), data: 0.0, grad: 0.0, op: "" },
+            GNode { id: 2, label: "b".into(), data: 0.0, grad: 0.0, op: "" },
+            GNode { id: 4, label: "e".into(), data: 0.0, grad: 0.0, op: "+" },
+        ];
+        let edges = vec![
+            GEdge { from: 1, to: 3 }, GEdge { from: 2, to: 3 },
+            GEdge { from: 1, to: 4 }, GEdge { from: 2, to: 4 },
+            GEdge { from: 3, to: 5 }, GEdge { from: 4, to: 5 },
+        ];
+        let natural_widths = nodes
+            .iter()
+            .map(|node| (node.id, natural_cell_widths(node)))
+            .collect();
+
+        let (positions, _, _) = layout(&nodes, &edges, &natural_widths);
+
+        assert_eq!(positions[&1].1, positions[&3].1);
+        assert_eq!(positions[&2].1, positions[&4].1);
     }
 }

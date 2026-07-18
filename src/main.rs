@@ -1,21 +1,7 @@
-pub mod utils;
-pub use utils::*;
+use micrograd::*;
 
-pub mod value;
-pub use value::*;
 
-pub mod draw_dot;
-pub use draw_dot::*;
-
-use std::fmt;
-use std::ops::{ Add, Mul };
-use std::rc::Rc;
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::atomic::AtomicUsize;
-
-use plotters::prelude::*;
-
+// ——— Main ———————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 fn main() {
 
@@ -28,7 +14,7 @@ fn main() {
     let w2 = Value::new("w2", 1.0);
 
     // bias
-    let b = Value::new("b", 8.0);
+    let b = Value::new("b", 6.8813735870195432);
 
     // output
     let x1w1 = (&x1 * &w1).label("x1w1");
@@ -40,7 +26,10 @@ fn main() {
 
     // backpropogate
     o.set_grad(1.0);
+    let mut visited: HashSet<usize> = HashSet::new();
+    o.backpropogate(&mut visited);
 
+    // draw
     draw_dot(&o);
 }
 
