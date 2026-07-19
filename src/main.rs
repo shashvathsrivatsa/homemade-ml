@@ -5,31 +5,27 @@ use micrograd::*;
 
 fn main() {
 
-    // inputs
-    let x1 = Value::new("x1", 2.0);
-    let x2 = Value::new("x2", 0.0);
+    let xs: Vec<Vec<Value>> = vec![
+        vec![2.0,  3.0, -1.0],
+        vec![3.0, -1.0,  0.5],
+        vec![0.5,  1.0,  1.0],
+        vec![1.0,  1.0, -1.0],
+    ].iter().map(|row| {
+        row.iter().map(|&entry| Value::new(entry)).collect()
+    }).collect();
 
-    // weights
-    let w1 = Value::new("w1", -3.0);
-    let w2 = Value::new("w2", 1.0);
+    let ys: Vec<Value> = vec![1.0, -1.0, -1.0, 1.0].iter().map(|&entry| Value::new( entry)).collect();
 
-    // bias
-    let b = Value::new("b", 6.8813735870195432);
+    let n = MLP::new(3, vec![4, 4, 1]);
 
-    // output
-    let x1w1 = (&x1 * &w1).label("x1w1");
-    let x2w2 = (&x2 * &w2).label("x2w2");
-    let x1w1x2w2 = (&x1w1 + &x2w2).label("x1w1x2w2");
+    let y_pred: Vec<Value> = xs.iter().map(|x| n.call(&x)[0].clone()).collect();
+    y_pred.iter().for_each(|y_pred| println!("{:?}", y_pred));
 
-    let n = (&x1w1x2w2 + &b).label("n");
-    let mut o = n.tanh().label("o");
+    let loss = ys.iter().zip(y_pred.iter()).fold(
+        Value::new(0.0), |acc, (ygt, yout)| acc + (ygt - yout).powi(2)
+    );
 
-    // backpropogate
-    o.set_grad(1.0);
-    let mut visited: HashSet<usize> = HashSet::new();
-    o.backpropogate(&mut visited);
-
-    // draw
-    draw_dot(&o);
+    println!("Loss: {:?}", loss);
+    draw_dot(&loss);
 }
 
