@@ -88,24 +88,44 @@ impl Value {
     }
 
     // —— Backpropogate ————————————————————————————————————————————————————————————————————
-    // Base case: self's grad != 0
-    // NOTE: this does NOT work for MLP
-    pub fn backpropogate(&mut self, visited: &mut HashSet<usize>) {
-        if visited.contains(&self.id) { return; }
-        visited.insert(self.id);
+    pub fn backpropogate(&mut self) {
 
-        for i in 0..self.parents.len() {
-            let grad = match self.op {
-                "+"    => self.get_grad(),
-                "*"    => self.parents[(i+1) % 2].data * self.get_grad(),
-                "tanh" => (1.0 - self.data.powi(2)) * self.get_grad(),
-                _ => 0.0
+        // Build topo order
+        let mut order: Vec<Value> = Vec::new();
+        let mut traversed: HashSet<usize> = HashSet::new();
+        self.build_topo(&mut order, &mut traversed);
+
+        // Initial node
+        self.set_grad(1.0);
+
+        // Run backwards through each node and feed both of its parents
+        order.iter_mut().rev().for_each(|node| {
+            for i in 0..node.parents.len() {
+                let grad = match node.op {
+                    "+"    => node.get_grad(),
+                    "*"    => node.parents[(i+1) % 2].data * node.get_grad(),
+                    "-"    => if i == 0 { node.get_grad() } else { -node.get_grad() },
+                    "pow2" => 2.0 * node.parents[0].data * node.get_grad(),
+                    "tanh" => (1.0 - node.data.powi(2)) * node.get_grad(),
+                    op => { println!("{} not accounted for", op); 0.0 }
+                };
+
+                let parent = &mut node.parents[i];
+                parent.set_grad(parent.get_grad() + grad);
             };
+        });
+    }
 
-            let p = &mut self.parents[i];
-            p.set_grad(p.get_grad() + grad);
-            p.backpropogate(visited);
-        };
+    fn build_topo(&mut self, order: &mut Vec<Value>, traversed: &mut HashSet<usize>) {
+        if traversed.contains(&self.id) { return; }
+        traversed.insert(self.id);
+
+        // Zero grads
+        self.set_grad(0.0);
+
+        // Post order
+        self.parents.iter_mut().for_each(|parent| parent.build_topo(order, traversed));
+        order.push(self.clone());
     }
 
     // —— Other ops ————————————————————————————————————————————————————————————————————————
@@ -115,8 +135,8 @@ impl Value {
         Value::new_kid(t, vec![self.clone()], "tanh")
     }
 
-    pub fn powi(&mut self, p: i32) -> Value {
-        Value::new_kid(self.data.powi(p), vec![self.clone()], "pow")
+    pub fn pow2(&mut self) -> Value {
+        Value::new_kid(self.data.powi(2), vec![self.clone()], "pow2")
     }
 
 }

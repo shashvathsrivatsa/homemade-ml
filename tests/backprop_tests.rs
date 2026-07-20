@@ -2,8 +2,7 @@ use micrograd::*;
 
 fn backprop(v: &mut Value) {
     v.set_grad(1.0);
-    let mut visited = HashSet::new();
-    v.backpropogate(&mut visited);
+    v.backpropogate();
 }
 
 fn numerical_grad(f_of_x: impl Fn(f64) -> f64, x: f64) -> f64 {
@@ -256,4 +255,53 @@ fn test_mlp_two_layer2_neurons_numeric_grad() {
     assert!((x.get_grad()   - num_x  ).abs() < tol, "df/dx:   analytic={:.6} numeric={:.6}", x.get_grad(),   num_x);
     assert!((w00.get_grad() - num_w00).abs() < tol, "df/dw00: analytic={:.6} numeric={:.6}", w00.get_grad(), num_w00);
     assert!((w10.get_grad() - num_w10).abs() < tol, "df/dw10: analytic={:.6} numeric={:.6}", w10.get_grad(), num_w10);
+}
+
+// ——— Sub backward ——————————————————————————————————————————————————————————
+// f = a - b  =>  df/da = 1,  df/db = -1
+// "-" currently falls through to `_ => 0.0` so this will catch missing impl.
+
+#[test]
+fn test_sub_backward() {
+    let a = Value::new(5.0);
+    let b = Value::new(3.0);
+    let mut f = &a - &b;
+    backprop(&mut f);
+    assert_eq!(a.get_grad(),  1.0, "df/da should be 1, got {}", a.get_grad());
+    assert_eq!(b.get_grad(), -1.0, "df/db should be -1, got {}", b.get_grad());
+}
+
+// ——— Pow2 backward —————————————————————————————————————————————————————————
+// f = a^2  =>  df/da = 2*a = 4  (at a=2)
+
+#[test]
+fn test_pow2_backward() {
+    let mut a = Value::new(2.0);
+    let mut f = a.pow2();
+    backprop(&mut f);
+    assert!((a.get_grad() - 4.0).abs() < 1e-9, "df/da should be 4, got {}", a.get_grad());
+}
+
+// ——— End-to-end MLP struct ————————————————————————————————————————————————
+// Runs the actual MLP::new / MLP::call / backpropogate path to make sure the
+// struct wiring produces non-zero, finite gradients for all inputs.
+// Uses a fixed seed by constructing weights manually isn't possible, so we
+// just assert the gradients are finite and at least one is non-zero.
+
+#[test]
+fn test_mlp_struct_backprop_runs() {
+    let x: Vec<Value> = (1..4).map(|i| Value::new((i + 1) as f64)).collect();
+    let m = MLP::new(3, vec![4, 4, 1]);
+    let mut out = m.call(&x)[0].clone();
+    out.backpropogate();
+
+    // output grad is set inside backpropogate
+    assert!(out.data.is_finite());
+    assert!(out.get_grad() == 1.0);
+
+    // every input should have a finite, non-zero gradient
+    for (i, xi) in x.iter().enumerate() {
+        assert!(xi.get_grad().is_finite(), "x[{}] grad is not finite", i);
+        assert!(xi.get_grad() != 0.0,      "x[{}] grad is zero",       i);
+    }
 }
