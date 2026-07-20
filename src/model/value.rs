@@ -1,143 +1,90 @@
-use crate::*;
+// use crate::*;
 
 
 // ——— Value ——————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-#[derive(Clone)]
-pub struct Value {
-    pub id: usize,
-    pub label: String,
+pub struct Pool {
+    pub nodes: Vec<Node>
+}
+
+pub struct Node {
     pub data: f64,
-    pub grad: Rc<RefCell<f64>>,
-    pub parents: Vec<Value>,
+    pub grad: f64,
+    pub parents: Vec<usize>,
     pub op: &'static str,
 }
 
-impl fmt::Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Value(data={})", self.data)
-    }
-}
+#[derive(Copy, Clone)]
+pub struct Value(pub usize);
 
-
-impl Add for &Value {
-    type Output = Value;
-    fn add(self, other: &Value) -> Value {
-        Value::new_kid(self.data + other.data, vec![self.clone(), other.clone()], "+")
-    }
-}
-
-impl Add for Value {
-    type Output = Value;
-    fn add(self, other: Value) -> Value {
-        Value::new_kid(self.data + other.data, vec![self, other], "+")
-    }
-}
-
-impl Mul for &Value {
-    type Output = Value;
-    fn mul(self, other: &Value) -> Value {
-        Value::new_kid(self.data * other.data, vec![self.clone(), other.clone()], "*")
-    }
-}
-
-impl Sub for &Value {
-    type Output = Value;
-    fn sub(self, other: &Value) -> Value {
-        Value::new_kid(self.data - other.data, vec![self.clone(), other.clone()], "-")
-    }
-}
-
-impl Value {
-
-    // —— New ——————————————————————————————————————————————————————————————————————————————
-    pub fn new(data: f64) -> Self {
-        Self {
-            id: next_id(),
-            label: "".to_string(),
-            data,
-            grad: Rc::new(RefCell::new(0.0)),
-            parents: Vec::new(),
-            op: "",
-        }
+impl Pool {
+    pub fn new() -> Self {
+        Pool { nodes: Vec::new() }
     }
 
-    pub fn new_kid(data: f64, parents: Vec<Value>, op: &'static str) -> Self {
-        Self {
-            id: next_id(),
-            label: "".to_string(),
-            data,
-            grad: Rc::new(RefCell::new(0.0)),
-            parents,
-            op,
-        }
+    // —— Value constructors ———————————————————————————————————————————————————————————————
+    pub fn new_value(&mut self, data: f64) -> Value {
+        self.nodes.push(Node { data, grad: 0.0, parents: vec![], op: "" });
+        Value(self.nodes.len() - 1)
     }
 
-    // —— Edit —————————————————————————————————————————————————————————————————————————————
-    pub fn label(mut self, label: &str) -> Self {
-        self.label = label.to_string();
-        self
+    pub fn new_kid(&mut self, data: f64, parents: Vec<usize>, op: &'static str) -> Value {
+        self.nodes.push(Node { data, grad: 0.0, parents, op });
+        Value(self.nodes.len() - 1)
     }
 
-    pub fn set_grad(&mut self, grad: f64) {
-        *self.grad.borrow_mut() = grad;
+    // —— Debug ————————————————————————————————————————————————————————————————————————————
+    pub fn print(&self, value: Value) {
+        println!("Value(data={})", self.nodes[value.0].data);
     }
 
-    pub fn get_grad(&self) -> f64 {
-        *self.grad.borrow()
+    // —— Setters / getters ————————————————————————————————————————————————————————————————
+    pub fn set_data(&mut self, v: Value, data: f64) {
+        self.nodes[v.0].data = data;
+    }
+
+    pub fn get_data(&self, v: Value) -> f64 {
+        self.nodes[v.0].data
+    }
+
+    pub fn set_grad(&mut self, v: Value, grad: f64) {
+        self.nodes[v.0].grad = grad;
+    }
+
+    pub fn get_grad(&self, v: Value) -> f64 {
+        self.nodes[v.0].grad
+    }
+
+    pub fn update(&mut self, v: Value, learning_rate: f64) {
+        let node: &mut Node = &mut self.nodes[v.0];
+        node.data -= learning_rate * node.grad;
     }
 
     // —— Backpropogate ————————————————————————————————————————————————————————————————————
-    pub fn backpropogate(&mut self) {
+    pub fn backpropogate(&mut self, root: Value) {
 
-        // Build topo order
-        let mut order: Vec<Value> = Vec::new();
-        let mut traversed: HashSet<usize> = HashSet::new();
-        self.build_topo(&mut order, &mut traversed);
+        // Zero grads
+        self.nodes.iter_mut().for_each(|n| n.grad = 0.0);
 
         // Initial node
-        self.set_grad(1.0);
+        self.set_grad(root, 1.0);
 
         // Run backwards through each node and feed both of its parents
-        order.iter_mut().rev().for_each(|node| {
-            for i in 0..node.parents.len() {
-                let grad = match node.op {
-                    "+"    => node.get_grad(),
-                    "*"    => node.parents[(i+1) % 2].data * node.get_grad(),
-                    "-"    => if i == 0 { node.get_grad() } else { -node.get_grad() },
-                    "pow2" => 2.0 * node.parents[0].data * node.get_grad(),
-                    "tanh" => (1.0 - node.data.powi(2)) * node.get_grad(),
+        for i in (0..=root.0).rev() {
+            for p in 0..self.nodes[i].parents.len() {
+                let grad = match self.nodes[i].op {
+                    "+"    => self.nodes[i].grad,
+                    "*"    => self.nodes[self.nodes[i].parents[(p+1) % 2]].data * self.nodes[i].grad,
+                    "-"    => if p == 0 { self.nodes[i].grad } else { -self.nodes[i].grad },
+                    "pow2" => 2.0 * self.nodes[self.nodes[i].parents[0]].data * self.nodes[i].grad,
+                    "tanh" => (1.0 - self.nodes[i].data.powi(2)) * self.nodes[i].grad,
                     op => { println!("{} not accounted for", op); 0.0 }
                 };
 
-                let parent = &mut node.parents[i];
-                parent.set_grad(parent.get_grad() + grad);
+                let parent_idx = self.nodes[i].parents[p];
+                self.nodes[parent_idx].grad += grad;
             };
-        });
+        }
     }
-
-    fn build_topo(&mut self, order: &mut Vec<Value>, traversed: &mut HashSet<usize>) {
-        if traversed.contains(&self.id) { return; }
-        traversed.insert(self.id);
-
-        // Zero grads
-        self.set_grad(0.0);
-
-        // Post order
-        self.parents.iter_mut().for_each(|parent| parent.build_topo(order, traversed));
-        order.push(self.clone());
-    }
-
-    // —— Other ops ————————————————————————————————————————————————————————————————————————
-    pub fn tanh(&self) -> Value {
-        let x = self.data;
-        let t = ( (2.0 * x).exp() - 1.0 ) / ( (2.0 * x).exp() + 1.0 );
-        Value::new_kid(t, vec![self.clone()], "tanh")
-    }
-
-    pub fn pow2(&mut self) -> Value {
-        Value::new_kid(self.data.powi(2), vec![self.clone()], "pow2")
-    }
-
 }
 

@@ -8,40 +8,44 @@ use plotters::style::text_anchor::{HPos, Pos, VPos};
 
 #[derive(Clone)]
 struct GNode {
-    id: usize,
-    label: String,
     data: f64,
     grad: f64,
     op: &'static str,
 }
 
 struct GEdge {
-    from: usize, // parent id
-    to: usize,   // parent id
+    from: usize, // parent graph index
+    to: usize,   // child graph index
 }
 
 // ── Trace: walk the DAG collecting nodes + edges ───────────────────────────
 
-fn trace(root: &crate::Value) -> (Vec<GNode>, Vec<GEdge>) {
+fn trace(pool: &crate::Pool, root: crate::Value) -> (Vec<GNode>, Vec<GEdge>) {
     let mut nodes = Vec::new();
     let mut edges = Vec::new();
-    let mut visited: HashSet<usize> = HashSet::new();
+    let mut indices = HashMap::new();
 
     fn build(
-        v: &crate::Value,
+        pool: &crate::Pool,
+        value: crate::Value,
         nodes: &mut Vec<GNode>,
         edges: &mut Vec<GEdge>,
-        visited: &mut HashSet<usize>,
-    ) {
-        if !visited.insert(v.id) { return; }
-        nodes.push(GNode { id: v.id, label: v.label.clone(), data: v.data, grad: *v.grad.borrow(), op: v.op });
-        for parent in &v.parents {
-            edges.push(GEdge { from: parent.id, to: v.id });
-            build(parent, nodes, edges, visited);
+        indices: &mut HashMap<usize, usize>,
+    ) -> usize {
+        if let Some(&index) = indices.get(&value.0) { return index; }
+
+        let node = &pool.nodes[value.0];
+        let index = nodes.len();
+        indices.insert(value.0, index);
+        nodes.push(GNode { data: node.data, grad: node.grad, op: node.op });
+        for &parent in &node.parents {
+            let parent_index = build(pool, Value(parent), nodes, edges, indices);
+            edges.push(GEdge { from: parent_index, to: index });
         }
+        index
     }
 
-    build(root, &mut nodes, &mut edges, &mut visited);
+    build(pool, root, &mut nodes, &mut edges, &mut indices);
     (nodes, edges)
 }
 
@@ -49,14 +53,13 @@ fn trace(root: &crate::Value) -> (Vec<GNode>, Vec<GEdge>) {
 
 #[derive(Clone, Copy)]
 struct CellWidths {
-    label: i32,
     data: i32,
     grad: i32,
 }
 
 impl CellWidths {
     fn total(self) -> i32 {
-        self.label + self.data + self.grad
+        self.data + self.grad
     }
 }
 
@@ -65,10 +68,7 @@ fn natural_cell_widths(node: &GNode) -> CellWidths {
     let padding = 14_i32; // left + right per section
     let data_w  = format!("data={:.3}", node.data).len() as i32 * char_w + padding;
     let grad_w  = format!("grad={:.3}", node.grad).len() as i32 * char_w + padding;
-    let label_w = if node.label.is_empty() { 0 } else {
-        (node.label.len() as i32 * char_w + padding).max(20)
-    };
-    CellWidths { label: label_w, data: data_w, grad: grad_w }
+    CellWidths { data: data_w, grad: grad_w }
 }
 
 // ── Layout: topological rank (x) + vertical slot (y) ─────────────────────
@@ -97,12 +97,12 @@ fn layout(
     }
 
     // Rank = longest path from leaf
-    let mut rank: HashMap<usize, i32> = nodes.iter().map(|n| (n.id, 0)).collect();
-    let mut in_deg: HashMap<usize, usize> = nodes.iter()
-        .map(|n| (n.id, inputs.get(&n.id).map_or(0, |v| v.len())))
+    let mut rank: HashMap<usize, i32> = (0..nodes.len()).map(|id| (id, 0)).collect();
+    let mut in_deg: HashMap<usize, usize> = (0..nodes.len())
+        .map(|id| (id, inputs.get(&id).map_or(0, |v| v.len())))
         .collect();
-    let mut queue: VecDeque<usize> = nodes.iter()
-        .filter(|n| in_deg[&n.id] == 0).map(|n| n.id).collect();
+    let mut queue: VecDeque<usize> = (0..nodes.len())
+        .filter(|id| in_deg[id] == 0).collect();
     while let Some(id) = queue.pop_front() {
         let r = rank[&id];
         for &ds in downstream.get(&id).unwrap_or(&vec![]) {
@@ -115,27 +115,26 @@ fn layout(
     }
 
     // Pull leaves rightward to sit adjacent to their consumer
-    for n in nodes {
-        if inputs.get(&n.id).map_or(true, |v| v.is_empty()) {
-            if let Some(ds_ids) = downstream.get(&n.id) {
+    for id in 0..nodes.len() {
+        if inputs.get(&id).map_or(true, |v| v.is_empty()) {
+            if let Some(ds_ids) = downstream.get(&id) {
                 let min_r = ds_ids.iter().map(|id| rank[id]).min().unwrap_or(1);
-                rank.insert(n.id, min_r - 1);
+                rank.insert(id, min_r - 1);
             }
         }
     }
 
     // Group by rank
     let mut by_rank: HashMap<i32, Vec<usize>> = HashMap::new();
-    for n in nodes { by_rank.entry(rank[&n.id]).or_default().push(n.id); }
+    for id in 0..nodes.len() { by_rank.entry(rank[&id]).or_default().push(id); }
 
-    // Justify each column like a table: every label, data, and gradient cell
+    // Justify each column like a table: every data and gradient cell
     // takes the maximum width of that component within the column.
     let mut cell_widths = natural_widths.clone();
     for ids in by_rank.values() {
-        let max_label = ids.iter().map(|id| natural_widths[id].label).max().unwrap_or(0);
         let max_data = ids.iter().map(|id| natural_widths[id].data).max().unwrap_or(0);
         let max_grad = ids.iter().map(|id| natural_widths[id].grad).max().unwrap_or(0);
-        let justified = CellWidths { label: max_label, data: max_data, grad: max_grad };
+        let justified = CellWidths { data: max_data, grad: max_grad };
         for id in ids {
             cell_widths.insert(*id, justified);
         }
@@ -143,9 +142,9 @@ fn layout(
 
     // Max node width per column
     let mut col_max_w: HashMap<i32, i32> = HashMap::new();
-    for n in nodes {
-        let r = rank[&n.id];
-        let w = cell_widths[&n.id].total();
+    for id in 0..nodes.len() {
+        let r = rank[&id];
+        let w = cell_widths[&id].total();
         let e = col_max_w.entry(r).or_insert(0);
         if w > *e { *e = w; }
     }
@@ -178,7 +177,7 @@ fn layout(
         let column_left = col_x[&r] - col_max_w[&r] / 2;
         let n = ids.len() as i32;
         for (slot, &id) in ids.iter().enumerate() {
-            let node = nodes.iter().find(|n| n.id == id).unwrap();
+            let node = &nodes[id];
             let cx = column_left + cell_widths[&id].total() / 2;
             let y = (slot as i32 - n / 2) * row_h + row_h / 2;
             val_pos.insert(id, (cx, y));
@@ -271,13 +270,14 @@ fn layout(
 
 // ── draw_dot ───────────────────────────────────────────────────────────────
 
-pub fn draw_dot(root: &crate::Value) {
+pub fn draw_dot(pool: &crate::Pool, root: crate::Value) {
     let path = "visualization.svg";
 
-    let (nodes, edges) = trace(root);
+    let (nodes, edges) = trace(pool, root);
     let natural_widths: HashMap<usize, CellWidths> = nodes
         .iter()
-        .map(|n| (n.id, natural_cell_widths(n)))
+        .enumerate()
+        .map(|(id, node)| (id, natural_cell_widths(node)))
         .collect();
     let (val_pos, op_pos, cell_widths) = layout(&nodes, &edges, &natural_widths);
 
@@ -303,8 +303,6 @@ pub fn draw_dot(root: &crate::Value) {
 
     let root_area = SVGBackend::new(path, (w as u32, h as u32)).into_drawing_area();
     root_area.fill(&BLACK).unwrap();
-
-    let node_map: HashMap<usize, &GNode> = nodes.iter().map(|n| (n.id, n)).collect();
 
     // ── helper: draw an arrow from (x1,y1) → (x2,y2) ────────────────────
     let arrow = |x1: i32, y1: i32, x2: i32, y2: i32| {
@@ -337,7 +335,7 @@ pub fn draw_dot(root: &crate::Value) {
     for edge in &edges {
         let (fx, fy) = val_pos[&edge.from];
         let (tx, ty) = val_pos[&edge.to];
-        let to_node  = node_map[&edge.to];
+        let to_node  = &nodes[edge.to];
         let from_hw  = cell_widths[&edge.from].total() / 2;
 
         let x1 = sx(fx + from_hw);
@@ -360,9 +358,9 @@ pub fn draw_dot(root: &crate::Value) {
     }
 
     // ── draw value boxes ──────────────────────────────────────────────────
-    for node in &nodes {
-        let (cx, cy) = val_pos[&node.id];
-        let widths = cell_widths[&node.id];
+    for (id, node) in nodes.iter().enumerate() {
+        let (cx, cy) = val_pos[&id];
+        let widths = cell_widths[&id];
         let nw = widths.total();
         let x0 = sx(cx - nw / 2);
         let y0 = sy(cy - node_h / 2);
@@ -401,22 +399,12 @@ pub fn draw_dot(root: &crate::Value) {
         )).unwrap();
         center_text(&grad_str, div2, x1);
 
-        if widths.label == 0 {
-            center_text(&data_str, x0, div2);
-        } else {
-            let div1 = x0 + widths.label;
-            root_area.draw(&PathElement::new(
-                vec![(div1, y0), (div1, y1)],
-                ShapeStyle::from(&WHITE).stroke_width(1),
-            )).unwrap();
-            center_text(&node.label, x0, div1);
-            center_text(&data_str, div1, div2);
-        }
+        center_text(&data_str, x0, div2);
     }
 
     // ── draw op ellipses ──────────────────────────────────────────────────
     for (id, &(ox, oy)) in &op_pos {
-        let node = node_map[id];
+        let node = &nodes[*id];
         let cx = sx(ox);
         let cy = sy(oy);
 
@@ -465,35 +453,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn trace_uses_pool_indices_to_deduplicate_shared_values() {
+        let mut pool = Pool::new();
+        let a = pool.new_value(2.0);
+        let b = pool.new_value(3.0);
+        let shared = pool.add(a, b);
+        let root = pool.mul(shared, shared);
+
+        let (nodes, edges) = trace(&pool, root);
+        let root_inputs: Vec<_> = edges.iter().filter(|edge| edge.to == 0).collect();
+
+        assert_eq!(nodes.len(), 4);
+        assert_eq!(edges.len(), 4);
+        assert_eq!(root_inputs.len(), 2);
+        assert_eq!(root_inputs[0].from, root_inputs[1].from);
+    }
+
+    #[test]
     fn derived_nodes_stay_vertically_centered_between_their_parents() {
         let nodes = vec![
-            GNode { id: 9, label: "o".into(), data: 0.0, grad: 0.0, op: "tanh" },
-            GNode { id: 8, label: "n".into(), data: 0.0, grad: 0.0, op: "+" },
-            GNode { id: 5, label: "sum".into(), data: 0.0, grad: 0.0, op: "+" },
-            GNode { id: 3, label: "left".into(), data: 0.0, grad: 0.0, op: "*" },
-            GNode { id: 1, label: "x1".into(), data: 0.0, grad: 0.0, op: "" },
-            GNode { id: 2, label: "w1".into(), data: 0.0, grad: 0.0, op: "" },
-            GNode { id: 4, label: "right".into(), data: 0.0, grad: 0.0, op: "*" },
-            GNode { id: 6, label: "x2".into(), data: 0.0, grad: 0.0, op: "" },
-            GNode { id: 7, label: "w2".into(), data: 0.0, grad: 0.0, op: "" },
-            GNode { id: 10, label: "b".into(), data: 0.0, grad: 0.0, op: "" },
+            GNode { data: 0.0, grad: 0.0, op: "tanh" },
+            GNode { data: 0.0, grad: 0.0, op: "+" },
+            GNode { data: 0.0, grad: 0.0, op: "+" },
+            GNode { data: 0.0, grad: 0.0, op: "*" },
+            GNode { data: 0.0, grad: 0.0, op: "" },
+            GNode { data: 0.0, grad: 0.0, op: "" },
+            GNode { data: 0.0, grad: 0.0, op: "*" },
+            GNode { data: 0.0, grad: 0.0, op: "" },
+            GNode { data: 0.0, grad: 0.0, op: "" },
+            GNode { data: 0.0, grad: 0.0, op: "" },
         ];
         let edges = vec![
-            GEdge { from: 1, to: 3 }, GEdge { from: 2, to: 3 },
-            GEdge { from: 6, to: 4 }, GEdge { from: 7, to: 4 },
-            GEdge { from: 3, to: 5 }, GEdge { from: 4, to: 5 },
-            GEdge { from: 5, to: 8 }, GEdge { from: 10, to: 8 },
-            GEdge { from: 8, to: 9 },
+            GEdge { from: 4, to: 3 }, GEdge { from: 5, to: 3 },
+            GEdge { from: 7, to: 6 }, GEdge { from: 8, to: 6 },
+            GEdge { from: 3, to: 2 }, GEdge { from: 6, to: 2 },
+            GEdge { from: 2, to: 1 }, GEdge { from: 9, to: 1 },
+            GEdge { from: 1, to: 0 },
         ];
         let natural_widths = nodes
             .iter()
-            .map(|node| (node.id, natural_cell_widths(node)))
+            .enumerate()
+            .map(|(id, node)| (id, natural_cell_widths(node)))
             .collect();
 
         let (positions, operation_positions, widths) =
             layout(&nodes, &edges, &natural_widths);
 
-        for child in [3, 4, 5, 8, 9] {
+        for child in [3, 6, 2, 1, 0] {
             let parents: Vec<_> = edges.iter().filter(|edge| edge.to == child).collect();
             let expected_y = parents.iter().map(|edge| positions[&edge.from].1).sum::<i32>()
                 / parents.len() as i32;
@@ -502,37 +508,37 @@ mod tests {
         }
 
         assert_eq!(
-            positions[&5].0 - widths[&5].total() / 2,
-            positions[&10].0 - widths[&10].total() / 2,
+            positions[&2].0 - widths[&2].total() / 2,
+            positions[&9].0 - widths[&9].total() / 2,
             "nodes in the same column should share a left edge",
         );
-        assert_eq!(widths[&5].label, widths[&10].label);
-        assert_eq!(widths[&5].data, widths[&10].data);
-        assert_eq!(widths[&5].grad, widths[&10].grad);
+        assert_eq!(widths[&2].data, widths[&9].data);
+        assert_eq!(widths[&2].grad, widths[&9].grad);
     }
 
     #[test]
     fn siblings_with_shared_parents_stay_aligned_with_parent_rows() {
         let nodes = vec![
-            GNode { id: 5, label: "f".into(), data: 0.0, grad: 0.0, op: "*" },
-            GNode { id: 3, label: "d".into(), data: 0.0, grad: 0.0, op: "*" },
-            GNode { id: 1, label: "a".into(), data: 0.0, grad: 0.0, op: "" },
-            GNode { id: 2, label: "b".into(), data: 0.0, grad: 0.0, op: "" },
-            GNode { id: 4, label: "e".into(), data: 0.0, grad: 0.0, op: "+" },
+            GNode { data: 0.0, grad: 0.0, op: "*" },
+            GNode { data: 0.0, grad: 0.0, op: "*" },
+            GNode { data: 0.0, grad: 0.0, op: "" },
+            GNode { data: 0.0, grad: 0.0, op: "" },
+            GNode { data: 0.0, grad: 0.0, op: "+" },
         ];
         let edges = vec![
-            GEdge { from: 1, to: 3 }, GEdge { from: 2, to: 3 },
-            GEdge { from: 1, to: 4 }, GEdge { from: 2, to: 4 },
-            GEdge { from: 3, to: 5 }, GEdge { from: 4, to: 5 },
+            GEdge { from: 2, to: 1 }, GEdge { from: 3, to: 1 },
+            GEdge { from: 2, to: 4 }, GEdge { from: 3, to: 4 },
+            GEdge { from: 1, to: 0 }, GEdge { from: 4, to: 0 },
         ];
         let natural_widths = nodes
             .iter()
-            .map(|node| (node.id, natural_cell_widths(node)))
+            .enumerate()
+            .map(|(id, node)| (id, natural_cell_widths(node)))
             .collect();
 
         let (positions, _, _) = layout(&nodes, &edges, &natural_widths);
 
-        assert_eq!(positions[&1].1, positions[&3].1);
-        assert_eq!(positions[&2].1, positions[&4].1);
+        assert_eq!(positions[&2].1, positions[&1].1);
+        assert_eq!(positions[&3].1, positions[&4].1);
     }
 }

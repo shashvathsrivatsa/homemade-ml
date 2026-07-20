@@ -1,6 +1,3 @@
-pub mod utils;
-pub use utils::*;
-
 pub mod model;
 pub use model::*;
 
@@ -15,5 +12,6 @@ pub use std::collections::{ HashMap, HashSet, VecDeque };
 pub use std::sync::atomic::AtomicUsize;
 
 pub use plotters::prelude::*;
-use rand::Rng;
+pub use rand::Rng;
+pub use std::time::Instant;
 

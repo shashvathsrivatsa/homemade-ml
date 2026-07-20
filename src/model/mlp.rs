@@ -9,25 +9,27 @@ pub struct Neuron {
 }
 
 impl Neuron {
-    fn new(n_inputs: usize) -> Self {
+    fn new(pool: &mut Pool, n_inputs: usize) -> Self {
         let mut rng = rand::thread_rng();
         Self {
             w: (0..n_inputs)
-                .map(|_| Value::new(rng.gen_range(-1.0..1.0)))
+                .map(|_| pool.new_value(rng.gen_range(-1.0..1.0)))
                 .collect(),
-                b: Value::new(rng.gen_range(-1.0..1.0)),
+                b: pool.new_value(rng.gen_range(-1.0..1.0)),
         }
     }
 
-    fn call(&self, x: &[Value]) -> Value {
-        let sum = x.iter().zip(self.w.iter())
-            .map(|(xi, wi)| xi * wi)
-            .fold(self.b.clone(), |acc, xiwi| acc + xiwi);
-        sum.tanh()
+    fn call(&self, pool: &mut Pool, x: &[Value]) -> Value {
+        let products: Vec<Value> = x.iter().zip(self.w.iter())
+            .map(|(&xi, &wi)| pool.mul(xi, wi))
+            .collect();
+
+        let sum = products.into_iter().fold(self.b, |acc, xiwi| pool.add(acc, xiwi));
+        pool.tanh(sum)
     }
 
-    fn parameters(&mut self) -> Vec<&mut Value> {
-        self.w.iter_mut().chain(std::iter::once(&mut self.b)).collect()
+    fn parameters(&self) -> Vec<Value> {
+        self.w.iter().copied().chain(std::iter::once(self.b)).collect()
     }
 }
 
@@ -39,18 +41,18 @@ pub struct Layer {
 }
 
 impl Layer {
-    fn new(n_inputs: usize, n_outputs: usize) -> Self {
+    fn new(pool: &mut Pool, n_inputs: usize, n_outputs: usize) -> Self {
         Self {
-            neurons: (0..n_outputs).map(|_| Neuron::new(n_inputs)).collect()
+            neurons: (0..n_outputs).map(|_| Neuron::new(pool, n_inputs)).collect()
         }
     }
 
-    fn call(&self, x: &[Value]) -> Vec<Value> {
-        self.neurons.iter().map(|n| n.call(x)).collect()
+    fn call(&self, pool: &mut Pool, x: &[Value]) -> Vec<Value> {
+        self.neurons.iter().map(|n| n.call(pool, x)).collect()
     }
 
-    fn parameters(&mut self) -> Vec<&mut Value> {
-        self.neurons.iter_mut().flat_map(|neuron| neuron.parameters()).collect()
+    fn parameters(&self) -> Vec<Value> {
+        self.neurons.iter().flat_map(|neuron| neuron.parameters()).collect()
     }
 }
 
@@ -59,62 +61,66 @@ impl Layer {
 
 pub struct MLP {
     layers: Vec<Layer>,
+    pub pool: Pool,
+    hyperparameters: Hyperparameters,
 }
 
 impl MLP {
     pub fn new(n_inputs: usize, n_outputs: Vec<usize>) -> Self {
+        let mut pool = Pool::new();
         let prev = |y: usize| if y == 0 { n_inputs } else { n_outputs[y - 1] };
+
         Self {
             layers: (0..n_outputs.len())
-                .map(|n_outputs_i| Layer::new(prev(n_outputs_i), n_outputs[n_outputs_i]))
+                .map(|n_outputs_i| Layer::new(&mut pool, prev(n_outputs_i), n_outputs[n_outputs_i]))
                 .collect(),
+            pool,
+            hyperparameters: Hyperparameters::new(),
         }
     }
 
-    pub fn call(&self, x: &[Value]) -> Vec<Value> {
-        self.layers.iter().fold(x.to_vec(), |acc, layer| layer.call(&acc))
+    fn call(&mut self, x: &[Value]) -> Vec<Value> {
+        self.layers.iter().fold(x.to_vec(), |acc, layer| layer.call(&mut self.pool, &acc))
     }
 
-    pub fn parameters(&mut self) -> Vec<&mut Value> {
-        self.layers.iter_mut().flat_map(|layer| layer.parameters()).collect()
+    pub fn parameters(&mut self) -> Vec<Value> {
+        self.layers.iter().flat_map(|layer| layer.parameters()).collect()
     }
 
-    pub fn train(&mut self, xs: &[Vec<Value>], ys: &[Value], hyperparameters: &Hyperparameters) {
+    pub fn train(&mut self, xs: &[Vec<Value>], ys: &[Value]) {
+        let s = Instant::now();
 
-        let mut y_pred: Vec<Value> = xs.iter().map(|x| self.call(&x)[0].clone()).collect();
+        let mut y_pred: Vec<Value> = xs.iter().map(|x| self.call(&x)[0]).collect();
 
-        let mut loss = ys.iter().zip(y_pred.iter()).fold(
-            Value::new(0.0), |acc, (ygt, yout)| acc + (ygt - yout).pow2()
-        );
-        println!("Loss: {:?}", loss);
+        let mut loss = mse_loss(&mut self.pool, ys, &y_pred);
 
         // Gradient descent
-        let mut iterations = 1;
-        while loss.data > 0.01 {
+        let mut steps = 1;
+        while self.pool.get_data(loss) > 0.01 {
 
             // Backprop
-            loss.backpropogate();
+            self.pool.backpropogate(loss);
 
             // Update
-            self.parameters().iter_mut().for_each(|p| p.data -= hyperparameters.learning_rate * p.get_grad());
-            y_pred = xs.iter().map(|x| self.call(&x)[0].clone()).collect();
+            self.parameters().iter().for_each(|&p| {
+                self.pool.update(p, self.hyperparameters.learning_rate)
+            });
+            y_pred = xs.iter().map(|x| self.call(&x)[0]).collect();
 
-            loss = ys.iter().zip(y_pred.iter()).fold(
-                Value::new(0.0), |acc, (ygt, yout)| acc + (ygt - yout).pow2()
-            );
-            println!("Loss: {:?}", loss);
+            loss = mse_loss(&mut self.pool, ys, &y_pred);
+            print!("Loss: "); self.pool.print(loss);
 
-            iterations += 1;
+            steps += 1;
         }
 
         // Visualize
-        loss.backpropogate();
-        println!("{:?}", y_pred);
-        println!("{}", iterations);
-        draw_dot(&loss);
+        self.pool.backpropogate(loss);
+        println!("{} steps", steps);
+        println!("{:.2?}", s.elapsed());
+        draw_dot(&self.pool, loss);
     }
 
-    pub fn eval(&self, x: &[Value]) -> Vec<Value> {
+    pub fn eval(&mut self, x: &[Value]) -> Vec<Value> {
         self.call(&x)
     }
 }

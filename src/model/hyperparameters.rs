@@ -1,4 +1,4 @@
-use crate::*;
+// use crate::*;
 
 
 // ——— Hyperparameters ————————————————————————————————————————————————————————————————————————————————————————————————
@@ -10,7 +10,7 @@ pub struct Hyperparameters {
 impl Hyperparameters {
     pub fn new() -> Self {
         Self {
-            learning_rate: 0.01,
+            learning_rate: 0.05,
         }
     }
 }
