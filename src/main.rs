@@ -20,5 +20,6 @@ fn main() {
 
     mlp.train(&xs, &ys, &Hyperparameters::new());
 
+    println!("{:?}", mlp.eval(&xs[0]));
 }
 

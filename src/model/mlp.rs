@@ -113,5 +113,9 @@ impl MLP {
         println!("{}", iterations);
         draw_dot(&loss);
     }
+
+    pub fn eval(&self, x: &[Value]) -> Vec<Value> {
+        self.call(&x)
+    }
 }
 
