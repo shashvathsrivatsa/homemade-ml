@@ -87,17 +87,23 @@ impl MLP {
         self.layers.iter().flat_map(|layer| layer.parameters()).collect()
     }
 
-    pub fn train(&mut self, xs: &[Vec<Value>], ys: &[Value]) {
+    pub fn train(&mut self, xs: &[Vec<f64>], ys: &[f64]) {
         let s = Instant::now();
-        let mut steps = 1;
+        let mut steps = 0;
+
+        let xs: Vec<Vec<Value>> = xs.iter().map(|row| {
+            row.iter().map(|&entry| self.pool.new_value(entry)).collect()
+        }).collect();
+        let ys: Vec<Value> = ys.iter().map(|&entry| self.pool.new_value(entry)).collect();
+        self.pool.set_input_end();
 
         loop {
             steps += 1;
-            self.pool.flush();
+            self.pool.flush_compute();
 
             // Calculate
             let y_pred: Vec<Value> = xs.iter().map(|x| self.call(&x)[0]).collect();
-            let loss = mse_loss(&mut self.pool, ys, &y_pred);
+            let loss = mse_loss(&mut self.pool, &ys, &y_pred);
             print!("Loss: "); self.pool.print(loss);
 
             // Break if converges
@@ -116,10 +122,18 @@ impl MLP {
                 self.pool.update(p, self.hyperparameters.learning_rate)
             });
         }
+
+        self.pool.flush();
     }
 
-    pub fn eval(&mut self, x: &[Value]) -> Vec<Value> {
-        self.call(&x)
+    pub fn eval(&mut self, x: &[f64]) -> Vec<f64> {
+        let x: Vec<Value> = x.iter().map(|&entry| self.pool.new_value(entry)).collect();
+        self.pool.set_input_end();
+
+        let result: Vec<f64> = self.call(&x).iter().map(|&v| self.pool.get_data(v)).collect();
+        self.pool.flush();
+
+        result
     }
 }
 

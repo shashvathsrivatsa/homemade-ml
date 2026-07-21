@@ -6,6 +6,7 @@
 pub struct Pool {
     pub nodes: Vec<Node>,
     pub param_end: usize,
+    pub input_end: usize,
 }
 
 pub struct Node {
@@ -20,7 +21,7 @@ pub struct Value(pub usize);
 
 impl Pool {
     pub fn new() -> Self {
-        Pool { nodes: Vec::new(), param_end: 0 }
+        Pool { nodes: Vec::new(), param_end: 0, input_end: 0 }
     }
 
     // —— Value constructors ———————————————————————————————————————————————————————————————
@@ -92,7 +93,17 @@ impl Pool {
         self.param_end = self.nodes.len();
     }
 
+    pub fn set_input_end(&mut self) {
+        self.input_end = self.nodes.len();
+    }
+
+    pub fn flush_compute(&mut self) {
+        if self.input_end == 0 { panic!("input end not set yet"); }
+        self.nodes.truncate(self.input_end);
+    }
+
     pub fn flush(&mut self) {
+        if self.param_end == 0 { panic!("param end not set yet"); }
         self.nodes.truncate(self.param_end);
     }
 
