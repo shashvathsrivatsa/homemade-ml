@@ -1,17 +1,12 @@
 pub mod model;
 pub use model::*;
 
-pub mod draw_dot;
-pub use draw_dot::*;
+pub mod utils;
+pub use utils::*;
 
-pub use std::fmt;
-pub use std::ops::{ Add, Mul, Sub };
-pub use std::rc::Rc;
-pub use std::cell::RefCell;
-pub use std::collections::{ HashMap, HashSet, VecDeque };
-pub use std::sync::atomic::AtomicUsize;
-
-pub use plotters::prelude::*;
-pub use rand::Rng;
+pub use std::fs;
 pub use std::time::Instant;
+
+pub use rand::{ Rng, seq::SliceRandom };
+pub use image::ImageReader;
 

@@ -3,6 +3,8 @@
 
 // ——— Value ——————————————————————————————————————————————————————————————————————————————————————————————————————————
 
+use crate::param_print;
+
 pub struct Pool {
     pub nodes: Vec<Node>,
     pub param_end: usize,
@@ -68,29 +70,41 @@ impl Pool {
         self.new_kid(data, vec![a.0, b.0], "+")
     }
 
-    pub fn mul(&mut self, a: Value, b: Value) -> Value {
-        let data = self.get_data(a) * self.get_data(b);
-        self.new_kid(data, vec![a.0, b.0], "*")
-    }
-
     pub fn sub(&mut self, a: Value, b: Value) -> Value {
         let data = self.get_data(a) - self.get_data(b);
         self.new_kid(data, vec![a.0, b.0], "-")
     }
 
-    pub fn tanh(&mut self, a: Value) -> Value {
-        let x = self.get_data(a);
-        let t = ( (2.0 * x).exp() - 1.0 ) / ( (2.0 * x).exp() + 1.0 );
-        self.new_kid(t, vec![a.0], "tanh")
+    pub fn mul(&mut self, a: Value, b: Value) -> Value {
+        let data = self.get_data(a) * self.get_data(b);
+        self.new_kid(data, vec![a.0, b.0], "*")
+    }
+
+    pub fn div(&mut self, a: Value, b: Value) -> Value {
+        let data = self.get_data(a) / self.get_data(b);
+        self.new_kid(data, vec![a.0, b.0], "/")
+    }
+
+    pub fn neg(&mut self, a: Value) -> Value {
+        self.new_kid(-self.get_data(a), vec![a.0], "neg")
     }
 
     pub fn pow2(&mut self, a: Value) -> Value {
         self.new_kid(self.get_data(a).powi(2), vec![a.0], "pow2")
     }
 
+    pub fn exp(&mut self, a: Value) -> Value {
+        self.new_kid(self.get_data(a).exp(), vec![a.0], "exp")
+    }
+
+    pub fn log(&mut self, a: Value) -> Value {
+        self.new_kid(self.get_data(a).ln(), vec![a.0], "log")
+    }
+
     // —— Optimize —————————————————————————————————————————————————————————————————————————
     pub fn set_param_end(&mut self) {
         self.param_end = self.nodes.len();
+        // param_print(self.nodes.len());
     }
 
     pub fn set_input_end(&mut self) {
@@ -119,14 +133,24 @@ impl Pool {
         // Run backwards through each node and feed both of its parents
         for i in (0..=root.0).rev() {
             for p in 0..self.nodes[i].parents.len() {
+                let cur_grad = self.nodes[i].grad;
+                let cur_data = self.nodes[i].data;
+                let par_data = self.nodes[self.nodes[i].parents[0]].data;
+
                 let grad = match self.nodes[i].op {
-                    "+"    => self.nodes[i].grad,
-                    "*"    => self.nodes[self.nodes[i].parents[(p+1) % 2]].data * self.nodes[i].grad,
-                    "-"    => if p == 0 { self.nodes[i].grad } else { -self.nodes[i].grad },
-                    "pow2" => 2.0 * self.nodes[self.nodes[i].parents[0]].data * self.nodes[i].grad,
-                    "tanh" => (1.0 - self.nodes[i].data.powi(2)) * self.nodes[i].grad,
+                    "+"    => 1.0,
+                    "-"    => if p == 0 { 1.0 } else { -1.0 },
+                    "*"    => self.nodes[self.nodes[i].parents[(p+1) % 2]].data,
+                    "/"    => {
+                        let denominator = self.nodes[self.nodes[i].parents[1]].data;
+                        if p == 0 { 1.0 / denominator } else { -par_data / denominator.powi(2) }
+                    },
+                    "neg"  => -1.0,
+                    "pow2" => 2.0 * par_data,
+                    "exp"  => cur_data,
+                    "log"  => 1.0 / par_data,
                     op => { println!("{} not accounted for", op); 0.0 }
-                };
+                } * cur_grad;
 
                 let parent_idx = self.nodes[i].parents[p];
                 self.nodes[parent_idx].grad += grad;
@@ -134,4 +158,3 @@ impl Pool {
         }
     }
 }
-

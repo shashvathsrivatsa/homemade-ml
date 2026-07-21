@@ -10,3 +10,6 @@ pub use hyperparameters::*;
 pub mod loss;
 pub use loss::*;
 
+pub mod activation;
+pub use activation::*;
+

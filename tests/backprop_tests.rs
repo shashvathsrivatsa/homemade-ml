@@ -35,7 +35,7 @@ fn test_mul_backward() {
 fn test_tanh_backward() {
     let mut pool = Pool::new();
     let a = pool.new_value(0.5);
-    let out = pool.tanh(a);
+    let out = tanh(&mut pool, a);
 
     pool.backpropogate(out);
 
@@ -50,7 +50,7 @@ fn test_chain_mul_tanh() {
     let a = pool.new_value(0.5);
     let b = pool.new_value(2.0);
     let product = pool.mul(a, b);
-    let out = pool.tanh(product);
+    let out = tanh(&mut pool, product);
 
     pool.backpropogate(out);
 
@@ -119,15 +119,15 @@ fn build_1in_2h_1out(
 
     let xw00 = pool.mul(x, w00);
     let h0_sum = pool.add(xw00, b0);
-    let h0 = pool.tanh(h0_sum);
+    let h0 = tanh(&mut pool, h0_sum);
     let xw10 = pool.mul(x, w10);
     let h1_sum = pool.add(xw10, b1);
-    let h1 = pool.tanh(h1_sum);
+    let h1 = tanh(&mut pool, h1_sum);
     let h0w20 = pool.mul(h0, w20);
     let h1w21 = pool.mul(h1, w21);
     let out_sum = pool.add(h0w20, h1w21);
     let out_sum = pool.add(out_sum, b2);
-    let out = pool.tanh(out_sum);
+    let out = tanh(&mut pool, out_sum);
 
     (pool, out, [x, w00, w10, w20, w21])
 }
@@ -196,22 +196,22 @@ fn fwd_2layer2_neurons(
 
     let xw00 = pool.mul(x, w00);
     let h0_sum = pool.add(xw00, b0);
-    let h0 = pool.tanh(h0_sum);
+    let h0 = tanh(&mut pool, h0_sum);
     let xw10 = pool.mul(x, w10);
     let h1_sum = pool.add(xw10, b1);
-    let h1 = pool.tanh(h1_sum);
+    let h1 = tanh(&mut pool, h1_sum);
 
     let h0w20 = pool.mul(h0, w20);
     let h1w21 = pool.mul(h1, w21);
     let n20_sum = pool.add(h0w20, h1w21);
     let n20_sum = pool.add(n20_sum, b2);
-    let n20 = pool.tanh(n20_sum);
+    let n20 = tanh(&mut pool, n20_sum);
 
     let h0w30 = pool.mul(h0, w30);
     let h1w31 = pool.mul(h1, w31);
     let n21_sum = pool.add(h0w30, h1w31);
     let n21_sum = pool.add(n21_sum, b3);
-    let n21 = pool.tanh(n21_sum);
+    let n21 = tanh(&mut pool, n21_sum);
     let out = pool.add(n20, n21);
 
     pool.get_data(out)
@@ -237,20 +237,20 @@ fn test_mlp_two_layer2_neurons_numeric_grad() {
 
     let xw00 = pool.mul(x, w00_handle);
     let h0_sum = pool.add(xw00, b0_handle);
-    let h0 = pool.tanh(h0_sum);
+    let h0 = tanh(&mut pool, h0_sum);
     let xw10 = pool.mul(x, w10_handle);
     let h1_sum = pool.add(xw10, b1_handle);
-    let h1 = pool.tanh(h1_sum);
+    let h1 = tanh(&mut pool, h1_sum);
     let h0w20 = pool.mul(h0, w20_handle);
     let h1w21 = pool.mul(h1, w21_handle);
     let n20_sum = pool.add(h0w20, h1w21);
     let n20_sum = pool.add(n20_sum, b2_handle);
-    let n20 = pool.tanh(n20_sum);
+    let n20 = tanh(&mut pool, n20_sum);
     let h0w30 = pool.mul(h0, w30_handle);
     let h1w31 = pool.mul(h1, w31_handle);
     let n21_sum = pool.add(h0w30, h1w31);
     let n21_sum = pool.add(n21_sum, b3_handle);
-    let n21 = pool.tanh(n21_sum);
+    let n21 = tanh(&mut pool, n21_sum);
     let out = pool.add(n20, n21);
 
     pool.backpropogate(out);
@@ -289,19 +289,19 @@ fn test_pow2_backward() {
 }
 
 #[test]
-fn test_mlp_struct_backprop_runs() {
-    let mut mlp = MLP::new(3, vec![4, 4, 1]);
-    let x: Vec<Value> = (1..=3)
-        .map(|value| mlp.pool.new_value(value as f64))
-        .collect();
-    let out = mlp.eval(&x)[0];
+fn test_mlp_eval_runs_and_flushes_temporary_nodes() {
+    let hyperparameters = Hyperparameters {
+        learning_rate: 0.05,
+        loss_threshold: 0.0,
+        batch_size: 32,
+        epochs: 10,
+    };
+    let mut mlp = MLP::new(3, vec![4, 4, 1], Tanh, Tanh, hyperparameters);
+    let parameter_count = mlp.pool.param_end;
 
-    mlp.pool.backpropogate(out);
+    let output = mlp.eval(&[2.0, 3.0, 4.0]);
 
-    assert!(mlp.pool.get_data(out).is_finite());
-    assert_eq!(mlp.pool.get_grad(out), 1.0);
-    for value in x {
-        assert!(mlp.pool.get_grad(value).is_finite());
-        assert_ne!(mlp.pool.get_grad(value), 0.0);
-    }
+    assert_eq!(output.len(), 1);
+    assert!(output[0].is_finite());
+    assert_eq!(mlp.pool.nodes.len(), parameter_count);
 }

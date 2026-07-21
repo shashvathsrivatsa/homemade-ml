@@ -5,13 +5,8 @@
 
 pub struct Hyperparameters {
     pub learning_rate: f64,
-}
-
-impl Hyperparameters {
-    pub fn new() -> Self {
-        Self {
-            learning_rate: 0.05,
-        }
-    }
+    pub loss_threshold: f64,
+    pub batch_size: usize,
+    pub epochs: usize,
 }
 
