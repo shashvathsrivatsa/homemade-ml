@@ -4,7 +4,8 @@
 // ——— Value ——————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 pub struct Pool {
-    pub nodes: Vec<Node>
+    pub nodes: Vec<Node>,
+    pub param_end: usize,
 }
 
 pub struct Node {
@@ -19,7 +20,7 @@ pub struct Value(pub usize);
 
 impl Pool {
     pub fn new() -> Self {
-        Pool { nodes: Vec::new() }
+        Pool { nodes: Vec::new(), param_end: 0 }
     }
 
     // —— Value constructors ———————————————————————————————————————————————————————————————
@@ -58,6 +59,41 @@ impl Pool {
     pub fn update(&mut self, v: Value, learning_rate: f64) {
         let node: &mut Node = &mut self.nodes[v.0];
         node.data -= learning_rate * node.grad;
+    }
+
+    // —— Operations ———————————————————————————————————————————————————————————————————————
+    pub fn add(&mut self, a: Value, b: Value) -> Value {
+        let data = self.get_data(a) + self.get_data(b);
+        self.new_kid(data, vec![a.0, b.0], "+")
+    }
+
+    pub fn mul(&mut self, a: Value, b: Value) -> Value {
+        let data = self.get_data(a) * self.get_data(b);
+        self.new_kid(data, vec![a.0, b.0], "*")
+    }
+
+    pub fn sub(&mut self, a: Value, b: Value) -> Value {
+        let data = self.get_data(a) - self.get_data(b);
+        self.new_kid(data, vec![a.0, b.0], "-")
+    }
+
+    pub fn tanh(&mut self, a: Value) -> Value {
+        let x = self.get_data(a);
+        let t = ( (2.0 * x).exp() - 1.0 ) / ( (2.0 * x).exp() + 1.0 );
+        self.new_kid(t, vec![a.0], "tanh")
+    }
+
+    pub fn pow2(&mut self, a: Value) -> Value {
+        self.new_kid(self.get_data(a).powi(2), vec![a.0], "pow2")
+    }
+
+    // —— Optimize —————————————————————————————————————————————————————————————————————————
+    pub fn set_param_end(&mut self) {
+        self.param_end = self.nodes.len();
+    }
+
+    pub fn flush(&mut self) {
+        self.nodes.truncate(self.param_end);
     }
 
     // —— Backpropogate ————————————————————————————————————————————————————————————————————

@@ -70,13 +70,13 @@ impl MLP {
         let mut pool = Pool::new();
         let prev = |y: usize| if y == 0 { n_inputs } else { n_outputs[y - 1] };
 
-        Self {
-            layers: (0..n_outputs.len())
+        let layers = (0..n_outputs.len())
                 .map(|n_outputs_i| Layer::new(&mut pool, prev(n_outputs_i), n_outputs[n_outputs_i]))
-                .collect(),
-            pool,
-            hyperparameters: Hyperparameters::new(),
-        }
+                .collect();
+
+        pool.set_param_end();
+
+        Self { layers, pool, hyperparameters: Hyperparameters::new() }
     }
 
     fn call(&mut self, x: &[Value]) -> Vec<Value> {
@@ -89,14 +89,24 @@ impl MLP {
 
     pub fn train(&mut self, xs: &[Vec<Value>], ys: &[Value]) {
         let s = Instant::now();
-
-        let mut y_pred: Vec<Value> = xs.iter().map(|x| self.call(&x)[0]).collect();
-
-        let mut loss = mse_loss(&mut self.pool, ys, &y_pred);
-
-        // Gradient descent
         let mut steps = 1;
-        while self.pool.get_data(loss) > 0.01 {
+
+        loop {
+            steps += 1;
+            self.pool.flush();
+
+            // Calculate
+            let y_pred: Vec<Value> = xs.iter().map(|x| self.call(&x)[0]).collect();
+            let loss = mse_loss(&mut self.pool, ys, &y_pred);
+            print!("Loss: "); self.pool.print(loss);
+
+            // Break if converges
+            if self.pool.get_data(loss) < 0.01 {
+                println!("{} steps", steps);
+                println!("{:.2?}", s.elapsed());
+                draw_dot(&self.pool, loss);
+                break;
+            }
 
             // Backprop
             self.pool.backpropogate(loss);
@@ -105,19 +115,7 @@ impl MLP {
             self.parameters().iter().for_each(|&p| {
                 self.pool.update(p, self.hyperparameters.learning_rate)
             });
-            y_pred = xs.iter().map(|x| self.call(&x)[0]).collect();
-
-            loss = mse_loss(&mut self.pool, ys, &y_pred);
-            print!("Loss: "); self.pool.print(loss);
-
-            steps += 1;
         }
-
-        // Visualize
-        self.pool.backpropogate(loss);
-        println!("{} steps", steps);
-        println!("{:.2?}", s.elapsed());
-        draw_dot(&self.pool, loss);
     }
 
     pub fn eval(&mut self, x: &[Value]) -> Vec<Value> {
