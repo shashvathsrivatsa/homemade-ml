@@ -1,9 +1,7 @@
-// use crate::*;
+use crate::*;
 
 
 // ——— Value ——————————————————————————————————————————————————————————————————————————————————————————————————————————
-
-use crate::param_print;
 
 pub struct Pool {
     pub nodes: Vec<Node>,
@@ -101,10 +99,14 @@ impl Pool {
         self.new_kid(self.get_data(a).ln(), vec![a.0], "log")
     }
 
+    pub fn max(&mut self, a: Value, b: Value) -> Value {
+        self.new_kid(f64::max(self.get_data(a), self.get_data(b)), vec![a.0, b.0], "max")
+    }
+
     // —— Optimize —————————————————————————————————————————————————————————————————————————
     pub fn set_param_end(&mut self) {
         self.param_end = self.nodes.len();
-        // param_print(self.nodes.len());
+        param_print(self.nodes.len());
     }
 
     pub fn set_input_end(&mut self) {
@@ -135,20 +137,21 @@ impl Pool {
             for p in 0..self.nodes[i].parents.len() {
                 let cur_grad = self.nodes[i].grad;
                 let cur_data = self.nodes[i].data;
-                let par_data = self.nodes[self.nodes[i].parents[0]].data;
+                let par_data = self.nodes[self.nodes[i].parents[p]].data;
+                let other_par_data = if self.nodes[i].parents.len() > 1 {
+                    self.nodes[self.nodes[i].parents[(p+1) % 2]].data
+                } else { f64::MAX };
 
                 let grad = match self.nodes[i].op {
                     "+"    => 1.0,
                     "-"    => if p == 0 { 1.0 } else { -1.0 },
-                    "*"    => self.nodes[self.nodes[i].parents[(p+1) % 2]].data,
-                    "/"    => {
-                        let denominator = self.nodes[self.nodes[i].parents[1]].data;
-                        if p == 0 { 1.0 / denominator } else { -par_data / denominator.powi(2) }
-                    },
+                    "*"    => other_par_data,
+                    "/"    => if p == 0 { 1.0 / other_par_data } else { -other_par_data / par_data.powi(2) },
                     "neg"  => -1.0,
                     "pow2" => 2.0 * par_data,
                     "exp"  => cur_data,
                     "log"  => 1.0 / par_data,
+                    "max"  => if par_data > other_par_data { 1.0 } else { 0.0 },
                     op => { println!("{} not accounted for", op); 0.0 }
                 } * cur_grad;
 

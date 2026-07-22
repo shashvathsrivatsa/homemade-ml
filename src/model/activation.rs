@@ -5,6 +5,7 @@ use crate::*;
 
 pub enum Activation {
     Tanh,
+    Relu,
     Softmax,
 }
 
@@ -13,8 +14,9 @@ pub use Activation::*;
 impl Activation {
     pub fn apply(&self, pool: &mut Pool, logits: &[Value]) -> Vec<Value> {
         match self {
-            Activation::Tanh => logits.iter().map(|&y| tanh(pool, y)).collect(),
-            Activation::Softmax => softmax(pool, logits),
+            Tanh => logits.iter().map(|&y| tanh(pool, y)).collect(),
+            Relu => logits.iter().map(|&y| relu(pool, y)).collect(),
+            Softmax => softmax(pool, logits),
         }
     }
 }
@@ -30,8 +32,8 @@ pub fn tanh(pool: &mut Pool, logit: Value) -> Value {
 }
 
 pub fn relu(pool: &mut Pool, logit: Value) -> Value {
-
-    Value(0)
+    let zero = pool.new_value(0.0);
+    pool.max(logit, zero)
 }
 
 pub fn softmax(pool: &mut Pool, logits: &[Value]) -> Vec<Value> {
@@ -39,3 +41,4 @@ pub fn softmax(pool: &mut Pool, logits: &[Value]) -> Vec<Value> {
     let sum = exps.iter().fold(pool.new_value(0.0), |acc, &e| pool.add(acc, e));
     exps.iter().map(|&e| pool.div(e, sum)).collect()
 }
+

@@ -180,6 +180,15 @@ impl MLP {
         result
     }
 
+    pub fn test(&mut self, xs: &[Vec<f64>], ys: &[f64]) -> f64 {
+        xs.iter().enumerate().fold(0.0, |total_correct, (i, x)| {
+            let y = self.eval(x);
+            let y_pred = (0..=9).fold(0, |max_i, i| if y[i] > y[max_i] { i } else { max_i });
+            if i % 100 == 0 { println!("{:.2}% ({}/{})", i as f64 / xs.len() as f64 * 100.0, i, xs.len()) }
+            if y_pred as f64 == ys[i] { total_correct + 1.0 } else { total_correct }
+        }) / xs.len() as f64
+    }
+
     pub fn parameters(&mut self) -> Vec<Value> {
         self.layers.iter().flat_map(|layer| layer.parameters()).collect()
     }
