@@ -10,7 +10,7 @@ fn main() {
         batch_size: 32,
         epochs: 10,
     };
-    let mut mlp = MLP::new(784, vec![128, 64, 10], Tanh, Softmax, hyperparameters);
+    let mut mlp = MLP::new(784, vec![128, 64, 10], Relu, Softmax, hyperparameters);
 
     test(&mut mlp);
 }
