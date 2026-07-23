@@ -20,11 +20,12 @@ pub struct Node {
 pub struct Value(pub usize);
 
 impl Pool {
+
+    // —— Constructors —————————————————————————————————————————————————————————————————————
     pub fn new() -> Self {
         Pool { nodes: Vec::new(), param_end: 0, input_end: 0 }
     }
 
-    // —— Value constructors ———————————————————————————————————————————————————————————————
     pub fn new_value(&mut self, data: f64) -> Value {
         self.nodes.push(Node { data, grad: 0.0, parents: vec![], op: "" });
         Value(self.nodes.len() - 1)
@@ -40,21 +41,21 @@ impl Pool {
         println!("Value(data={})", self.nodes[value.0].data);
     }
 
-    // —— Setters / getters ————————————————————————————————————————————————————————————————
-    pub fn set_data(&mut self, v: Value, data: f64) {
-        self.nodes[v.0].data = data;
-    }
-
+    // —— Getters / setters ————————————————————————————————————————————————————————————————
     pub fn get_data(&self, v: Value) -> f64 {
         self.nodes[v.0].data
     }
 
-    pub fn set_grad(&mut self, v: Value, grad: f64) {
-        self.nodes[v.0].grad = grad;
+    pub fn set_data(&mut self, v: Value, data: f64) {
+        self.nodes[v.0].data = data;
     }
 
     pub fn get_grad(&self, v: Value) -> f64 {
         self.nodes[v.0].grad
+    }
+
+    pub fn set_grad(&mut self, v: Value, grad: f64) {
+        self.nodes[v.0].grad = grad;
     }
 
     pub fn update(&mut self, v: Value, learning_rate: f64) {

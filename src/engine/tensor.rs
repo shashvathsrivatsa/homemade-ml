@@ -3,19 +3,29 @@
 
 // ——— Tensor —————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-pub struct Tensor {
-    data: Vec<f64>,
-    shape: Vec<usize>,
-    strides: Vec<usize>,
+pub struct TensorNode {
+    pub data: Vec<f64>,
+    pub shape: Vec<usize>,
+    pub strides: Vec<usize>,
+    pub grad: Vec<f64>,
+    pub parents: Vec<usize>,
+    pub op: &'static str,
 }
 
-impl Tensor {
+impl TensorNode {
 
     // —— Constructors —————————————————————————————————————————————————————————————————————
     pub fn new(data: Vec<f64>, shape: Vec<usize>) -> Self {
         let strides = Self::compute_strides(&shape);
-        Tensor { data, shape, strides }
+        let grad: Vec<f64> = vec![0.0; data.len()];
+        TensorNode { data, shape, strides, grad, parents: vec![], op: "" }
+    }
 
+    pub fn zeros(shape: Vec<usize>) -> Self {
+        let data: Vec<f64> = (0..shape.iter().product()).map(|_| 0.0).collect();
+        let strides = Self::compute_strides(&shape);
+        let grad: Vec<f64> = vec![0.0; data.len()];
+        TensorNode { data, shape, strides, grad, parents: vec![], op: "" }
     }
 
     // —— Helpers ——————————————————————————————————————————————————————————————————————————
@@ -42,10 +52,17 @@ impl Tensor {
     }
 }
 
+// —— Real forward ops —————————————————————————————————————————————————————————————————————
 
-pub fn matmul(a: &Tensor, b: &Tensor) -> Tensor {
+pub fn transpose(a: &TensorNode) -> TensorNode {
+    let data: Vec<f64> = (0..a.shape[1]).flat_map(|col| {
+        (0..a.shape[0]).map(move |row| a.get(&[row, col]))
+    }).collect();
+    TensorNode::new(data, vec![a.shape[1], a.shape[0]])
+}
+
+pub fn matmul(a: &TensorNode, b: &TensorNode) -> TensorNode {
     assert_eq!(a.shape[1], b.shape[0], "invalid dimensions for matmul");
-
     let mut c: Vec<f64> = vec![];
 
     for row in 0..a.shape[0] {
@@ -57,6 +74,16 @@ pub fn matmul(a: &Tensor, b: &Tensor) -> Tensor {
         }
     }
 
-    Tensor::new(c, vec![a.shape[0], b.shape[1]])
+    TensorNode::new(c, vec![a.shape[0], b.shape[1]])
+}
+
+pub fn matadd(a: &TensorNode, b: &TensorNode) -> TensorNode {
+    assert_eq!(a.shape, b.shape, "invalid dimensions for matadd");
+
+    let c: Vec<f64> = a.data.iter().zip(b.data.iter())
+        .map(|(a_k, b_k)| a_k + b_k)
+        .collect();
+
+    TensorNode::new(c, a.shape.clone())
 }
 
