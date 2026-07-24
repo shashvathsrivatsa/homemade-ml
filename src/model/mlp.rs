@@ -146,8 +146,8 @@ impl MLP {
         let weights: Vec<f64> = txt.lines().map(|l| l.parse().unwrap()).collect();
         let mut offset = 0;
         for &p in self.parameters().iter() {
-            let size = self.pool.nodes[p.0].data.len();
-            self.pool.nodes[p.0].data = weights[offset..offset + size].to_vec();
+            let size = self.pool.get_data(p).len();
+            self.pool.set_data(p, weights[offset..offset + size].to_vec());
             offset += size;
         }
     }
