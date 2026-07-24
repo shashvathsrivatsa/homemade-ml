@@ -19,7 +19,7 @@ impl Layer {
         let c = pool.matmul(x, self.w);
         let z = pool.bias_add(c, self.b);
         z
-        // TODO: activation
+            // TODO: activation
     }
 
     fn parameters(&self, pool: &mut TensorPool) -> Vec<Tensor> {
@@ -78,10 +78,9 @@ impl MLP {
             indices.shuffle(&mut rng);
 
             for (batch_num, chunk) in indices.chunks(self.hyperparameters.batch_size).enumerate() {
-                // TODO: (flush)
 
                 // Load
-                let x_data: Vec<f64> = chunk.iter().flat_map(|&i| x[i]).collect();
+                let x_data: Vec<f64> = chunk.iter().flat_map(|&i| x[i].iter().copied()).collect();
                 let y_data: Vec<f64> = chunk.iter().map(|&i| y[i]).collect();
                 let x = self.pool.new_tensor(x_data, vec![chunk.len(), x[0].len()]);
                 let y = self.pool.new_tensor(y_data, vec![chunk.len()]);
@@ -106,6 +105,8 @@ impl MLP {
                 self.parameters().iter().for_each(|&p| {
                     self.pool.update(p, self.hyperparameters.learning_rate)
                 });
+
+                // TODO: flush
             }
         }
 
@@ -114,9 +115,10 @@ impl MLP {
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————
     pub fn eval(&mut self, x: &[f64]) -> Vec<f64> {
-        let x: Vec<Value> = x.iter().map(|&entry| self.pool.new_value(entry)).collect();
-        let result: Vec<f64> = self.call(&x).iter().map(|&v| self.pool.get_data(v)).collect();
-        self.pool.flush();
+        let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);
+        let y = self.call(x);
+        let result: Vec<f64> = self.pool.get_data(y).to_owned();
+        // TODO: flush
         result
     }
 
@@ -131,7 +133,10 @@ impl MLP {
 
     // —— Store ————————————————————————————————————————————————————————————————————————————
     pub fn save(&mut self) {
-        let weights: Vec<f64> = self.parameters().iter().map(|&p| self.pool.get_data(p)).collect();
+        let parameters = self.parameters();
+        let weights: Vec<f64> = parameters.iter()
+            .flat_map(|&p| self.pool.get_data(p).to_owned())
+            .collect();
         let txt = weights.iter().map(|w| w.to_string()).collect::<Vec<_>>().join("\n");
         fs::write("model.txt", txt).unwrap();
     }
@@ -139,9 +144,12 @@ impl MLP {
     pub fn load(&mut self) {
         let txt = fs::read_to_string("model.txt").unwrap();
         let weights: Vec<f64> = txt.lines().map(|l| l.parse().unwrap()).collect();
-        self.parameters().iter().zip(weights.iter()).for_each(|(&p, &w)| {
-            self.pool.set_data(p, w);
-        });
+        let mut offset = 0;
+        for &p in self.parameters().iter() {
+            let size = self.pool.nodes[p.0].data.len();
+            self.pool.nodes[p.0].data = weights[offset..offset + size].to_vec();
+            offset += size;
+        }
     }
 }
 

@@ -4,7 +4,7 @@ use crate::*;
 // ——— TensorPool —————————————————————————————————————————————————————————————————————————————————————————————————————
 
 pub struct TensorPool {
-    nodes: Vec<TensorNode>,
+    pub nodes: Vec<TensorNode>,
 }
 
 #[derive(Copy, Clone)]
@@ -45,8 +45,13 @@ impl TensorPool {
     }
 
     // —— Getters / setters ————————————————————————————————————————————————————————————————
-    pub fn get_data(&self, a: Tensor) -> &[f64] {
-        &self.nodes[a.0].data
+    pub fn get_data(&self, t: Tensor) -> &[f64] {
+        &self.nodes[t.0].data
+    }
+
+    pub fn update(&mut self, t_tensor: Tensor, learning_rate: f64) {
+        let t: &mut TensorNode = &mut self.nodes[t_tensor.0];
+        t.data.iter_mut().zip(t.grad.iter()).for_each(|(d, g)| *d -= learning_rate * g);
     }
 
     // —— Forward ops ——————————————————————————————————————————————————————————————————————
