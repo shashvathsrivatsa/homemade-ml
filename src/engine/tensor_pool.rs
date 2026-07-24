@@ -30,11 +30,11 @@ impl TensorPool {
     }
 
     // —— Forward ops ——————————————————————————————————————————————————————————————————————
-    pub fn transpose(&mut self, a_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let a_t = transpose(a);
-        self.new_kid(a_t, vec![a_tensor.0], "T")
-    }
+    // pub fn transpose(&mut self, a_tensor: Tensor) -> Tensor {
+    //     let a = &self.nodes[a_tensor.0];
+    //     let a_t = transpose(a);
+    //     self.new_kid(a_t, vec![a_tensor.0], "T")
+    // }
 
     pub fn matmul(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
@@ -43,12 +43,12 @@ impl TensorPool {
         self.new_kid(c, vec![a_tensor.0, b_tensor.0], "@")
     }
 
-    pub fn matadd(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let b = &self.nodes[b_tensor.0];
-        let c = matadd(a, b);
-        self.new_kid(c, vec![a_tensor.0, b_tensor.0], "+")
-    }
+    // pub fn matadd(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
+    //     let a = &self.nodes[a_tensor.0];
+    //     let b = &self.nodes[b_tensor.0];
+    //     let c = matadd(a, b);
+    //     self.new_kid(c, vec![a_tensor.0, b_tensor.0], "+")
+    // }
 
     pub fn bias_add(&mut self, a_tensor: Tensor, bias_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
@@ -64,11 +64,7 @@ impl TensorPool {
     }
 
     // —— Backward ops —————————————————————————————————————————————————————————————————————
-    pub fn matmul_backward(&mut self, a_tensor: Tensor, b_tensor: Tensor, dc_tensor: Tensor) -> (TensorNode, TensorNode) {
-        let a = &self.nodes[a_tensor.0];
-        let b = &self.nodes[b_tensor.0];
-        let dc = &self.nodes[dc_tensor.0];
-
+    pub fn matmul_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> (TensorNode, TensorNode) {
         let at = transpose(a);
         let bt = transpose(b);
         let dc_da = matmul(&dc, &bt);
@@ -76,8 +72,50 @@ impl TensorPool {
         (dc_da, dc_db)
     }
 
-    pub fn bias_add_backward(&mut self, ) {
-        todo!()
+    pub fn bias_add_backward(&self, dc: &TensorNode) -> (TensorNode, TensorNode) {
+        let da = TensorNode::new(dc.data.clone(), dc.shape.clone());
+
+        let d_bias_data: Vec<f64> = (0..dc.shape[1]).map(|col| {
+            (0..dc.shape[0]).map(|row| dc.get(&[row, col])).sum()
+        }).collect();
+        let d_bias = TensorNode::new(d_bias_data, vec![dc.shape[1]]);
+
+        (da, d_bias)
+    }
+
+    // —— Backpropogate ————————————————————————————————————————————————————————————————————
+    pub fn backpropogate(&mut self, root_tensor: Tensor) {
+
+        // Zero grads
+        (0..root_tensor.0).for_each(|i| self.nodes[i].set_grad(0.0));
+
+        // Initial node
+        let root = &mut self.nodes[root_tensor.0];
+        root.set_grad(1.0);
+
+        // Run backward
+        for i in (0..=root_tensor.0).rev() {
+            let cur = &self.nodes[i];
+            let cur_grad = TensorNode::new(cur.grad.clone(), cur.shape.clone());
+            if cur.parents.len() == 0 { continue; }
+
+            let par_grads = match self.nodes[i].op {
+                "@" => {
+                    let par_1 = &self.nodes[cur.parents[0]];
+                    let par_2 = &self.nodes[cur.parents[1]];
+                    self.matmul_backward(par_1, par_2, &cur_grad)
+                },
+                "bias +" => self.bias_add_backward(&cur_grad),
+                op => { panic!("{} not accounted for", op) }
+            };
+
+            for p in 0..cur.parents.len() {
+                let par_idx = self.nodes[i].parents[p];
+                let old_par_grad = TensorNode::new(self.nodes[par_idx].grad.clone(), self.nodes[par_idx].shape.clone());
+                let par_grad = match p { 0 => &par_grads.0, 1 => &par_grads.1, _ => panic!() };
+                self.nodes[par_idx].grad = matadd(&old_par_grad, par_grad).data;
+            }
+        }
     }
 }
 

@@ -46,9 +46,8 @@ impl TensorNode {
         self.data[self.flat_index(indices)]
     }
 
-    pub fn set(&mut self, indices: &[usize], new_value: f64) {
-        let flat_index = self.flat_index(indices);
-        self.data[flat_index] = new_value;
+    pub fn set_grad(&mut self, grad_value: f64) {
+        self.grad = self.grad.iter().map(|_| grad_value).collect();
     }
 }
 
