@@ -102,7 +102,7 @@ impl MLP {
                 // Backprop
                 self.pool.backpropogate(loss);
 
-                // Update
+                // Update weights
                 self.parameters().iter().for_each(|&p| {
                     self.pool.update(p, self.hyperparameters.learning_rate)
                 });
@@ -110,44 +110,6 @@ impl MLP {
         }
 
         println!("{:.2?}", s.elapsed());
-    }
-
-    pub fn train_full(&mut self, xs: &[Vec<f64>], ys: &[f64]) {
-        let s = Instant::now();
-        let mut steps = 0;
-
-        let xs: Vec<Vec<Value>> = xs.iter().map(|row| {
-            row.iter().map(|&entry| self.pool.new_value(entry)).collect()
-        }).collect();
-        let ys: Vec<Value> = ys.iter().map(|&entry| self.pool.new_value(entry)).collect();
-        self.pool.set_input_end();
-
-        loop {
-            steps += 1;
-            self.pool.flush_compute();
-
-            // Calculate
-            let y_pred: Vec<Vec<Value>> = xs.iter().map(|x| self.call(&x)).collect();
-            let loss = cross_entropy_loss(&mut self.pool, &ys, &y_pred);
-            print!("Loss: "); self.pool.print(loss);
-
-            // Break if converges
-            if self.pool.get_data(loss) < 0.01 {
-                println!("{} steps", steps);
-                break;
-            }
-
-            // Backprop
-            self.pool.backpropogate(loss);
-
-            // Update
-            self.parameters().iter().for_each(|&p| {
-                self.pool.update(p, self.hyperparameters.learning_rate)
-            });
-        }
-
-        println!("{:.2?}", s.elapsed());
-        self.pool.flush();
     }
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————
