@@ -4,8 +4,8 @@ pub use value::*;
 pub mod tensor;
 pub use tensor::*;
 
-pub mod tensor_pool;
-pub use tensor_pool::*;
+pub mod pool;
+pub use pool::*;
 
 pub mod loss;
 pub use loss::*;

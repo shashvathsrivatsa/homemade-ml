@@ -29,26 +29,33 @@ impl TensorPool {
         Tensor(self.nodes.len() - 1)
     }
 
-    // —— Forward ops ——————————————————————————————————————————————————————————————————————
-    // pub fn transpose(&mut self, a_tensor: Tensor) -> Tensor {
-    //     let a = &self.nodes[a_tensor.0];
-    //     let a_t = transpose(a);
-    //     self.new_kid(a_t, vec![a_tensor.0], "T")
-    // }
+    pub fn new_zeros(&mut self, shape: Vec<usize>) -> Tensor {
+        self.nodes.push(TensorNode::new_zeros(shape));
+        Tensor(self.nodes.len() - 1)
+    }
 
+    pub fn new_rand(&mut self, shape: Vec<usize>) -> Tensor {
+        self.nodes.push(TensorNode::new_rand(shape));
+        Tensor(self.nodes.len() - 1)
+    }
+
+    // —— Debug ————————————————————————————————————————————————————————————————————————————
+    pub fn print(&self, a: Tensor) {
+        println!("Value(data={:?})", self.nodes[a.0].data);
+    }
+
+    // —— Getters / setters ————————————————————————————————————————————————————————————————
+    pub fn get_data(&self, a: Tensor) -> &[f64] {
+        &self.nodes[a.0].data
+    }
+
+    // —— Forward ops ——————————————————————————————————————————————————————————————————————
     pub fn matmul(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
         let b = &self.nodes[b_tensor.0];
         let c = matmul(a, b);
         self.new_kid(c, vec![a_tensor.0, b_tensor.0], "@")
     }
-
-    // pub fn matadd(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
-    //     let a = &self.nodes[a_tensor.0];
-    //     let b = &self.nodes[b_tensor.0];
-    //     let c = matadd(a, b);
-    //     self.new_kid(c, vec![a_tensor.0, b_tensor.0], "+")
-    // }
 
     pub fn bias_add(&mut self, a_tensor: Tensor, bias_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
