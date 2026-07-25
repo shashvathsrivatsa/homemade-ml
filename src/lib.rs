@@ -9,6 +9,7 @@ pub use utils::*;
 
 pub use std::fs;
 pub use std::time::Instant;
+pub use std::io::Write;
 
 pub use rand::{ Rng, seq::SliceRandom };
 pub use image::ImageReader;

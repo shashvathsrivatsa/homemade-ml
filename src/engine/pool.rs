@@ -5,6 +5,7 @@ use crate::*;
 
 pub struct TensorPool {
     nodes: Vec<TensorNode>,
+    param_end: usize,
 }
 
 #[derive(Copy, Clone)]
@@ -14,7 +15,7 @@ impl TensorPool {
 
     // —— Constructors —————————————————————————————————————————————————————————————————————
     pub fn new() -> Self {
-        TensorPool { nodes: Vec::new() }
+        TensorPool { nodes: Vec::new(), param_end: 0 }
     }
 
     pub fn new_tensor(&mut self, data: Vec<f64>, shape: Vec<usize>) -> Tensor {
@@ -29,8 +30,8 @@ impl TensorPool {
         Tensor(self.nodes.len() - 1)
     }
 
-    pub fn new_zeros(&mut self, shape: Vec<usize>) -> Tensor {
-        self.nodes.push(TensorNode::new_zeros(shape));
+    pub fn fill(&mut self, shape: Vec<usize>, num: f64) -> Tensor {
+        self.nodes.push(TensorNode::fill(shape, num));
         Tensor(self.nodes.len() - 1)
     }
 
@@ -41,7 +42,16 @@ impl TensorPool {
 
     // —— Debug ————————————————————————————————————————————————————————————————————————————
     pub fn print(&self, a: Tensor) {
-        println!("Value(data={:?})", self.nodes[a.0].data);
+        println!("Tensor(data={:?}, shape={:?})", self.nodes[a.0].data, self.nodes[a.0].shape);
+    }
+
+    // —— Optim ————————————————————————————————————————————————————————————————————————————
+    pub fn set_param_end(&mut self) {
+        self.param_end = self.nodes.len();
+    }
+
+    pub fn flush(&mut self) {
+        self.nodes.truncate(self.param_end);
     }
 
     // —— Getters / setters ————————————————————————————————————————————————————————————————
@@ -51,6 +61,10 @@ impl TensorPool {
 
     pub fn set_data(&mut self, t: Tensor, data: Vec<f64>) {
         self.nodes[t.0].data = data;
+    }
+
+    pub fn get_shape(&self, t: Tensor) -> &[usize] {
+        &self.nodes[t.0].shape
     }
 
     pub fn update(&mut self, t_tensor: Tensor, learning_rate: f64) {
@@ -91,19 +105,74 @@ impl TensorPool {
         self.new_kid(TensorNode::new(data, labels.shape.clone()), vec![y_pred_tensor.0, labels_tensor.0], "gather")
     }
 
-    pub fn log(&mut self, a: Tensor) -> Tensor {
-        let data = self.nodes[a.0].data.iter().map(|v| v.ln()).collect();
-        self.new_kid(TensorNode::new(data, self.nodes[a.0].shape.clone()), vec![a.0], "log")
+    pub fn log(&mut self, a_tensor: Tensor) -> Tensor {
+        let data = self.nodes[a_tensor.0].data.iter().map(|v| v.ln()).collect();
+        self.new_kid(TensorNode::new(data, self.nodes[a_tensor.0].shape.clone()), vec![a_tensor.0], "log")
     }
 
-    pub fn mean(&mut self, a: Tensor) -> Tensor {
-
-
-        todo!()
+    pub fn mean(&mut self, a_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let sum: f64 = a.data.iter().sum();
+        let mean = sum / a.data.len() as f64;
+        self.new_kid(TensorNode::new(vec![mean], vec![1]), vec![a_tensor.0], "mean")
     }
 
-    pub fn neg(&mut self, a: Tensor) -> Tensor {
-        todo!()
+    pub fn neg(&mut self, a_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let data = a.data.iter().map(|v| -v).collect();
+        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "neg")
+    }
+
+    pub fn max(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let b = &self.nodes[b_tensor.0];
+        assert_eq!(a.data.len(), b.data.len(), "mismatching dimensions for max");
+        let data = a.data.iter().zip(b.data.iter())
+            .map(|(&a_k, &b_k)| f64::max(a_k, b_k))
+            .collect();
+        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0, b_tensor.0], "max")
+    }
+
+    pub fn exp(&mut self, a_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let data = a.data.iter().map(|v| v.exp()).collect();
+        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "exp")
+    }
+
+    // a = [batch, n_classes]; c = [batch]
+    pub fn sum(&mut self, a_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let data = (0..a.shape[0]).map(|row| {
+            (0..a.shape[1]).map(|col| a.get(&[row, col])).sum()
+        }).collect();
+        self.new_kid(TensorNode::new(data, vec![a.shape[0]]), vec![a_tensor.0], "sum")
+    }
+
+    // a = [batch, n_classes]; b = [batch]; c = [batch, n_classes]
+    pub fn div(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let b = &self.nodes[b_tensor.0];
+        let data = (0..a.shape[0]).flat_map(|row| {
+            (0..a.shape[1]).map(move |col| a.get(&[row, col]) / b.get(&[row]))
+        }).collect();
+        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0, b_tensor.0], "div")
+    }
+
+    pub fn mul(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let b = &self.nodes[b_tensor.0];
+        let data = a.data.iter().zip(b.data.iter())
+            .map(|(a_k, b_k)| a_k * b_k)
+            .collect();
+        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0, b_tensor.0], "mul")
+    }
+
+    pub fn tanh(&mut self, a_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let data = a.data.iter().map(|a_k| {
+            (1.0 - (-2.0 * a_k).exp()) / (1.0 + (-2.0 * a_k).exp())
+        }).collect();
+        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "tanh")
     }
 
     // —— Backward ops —————————————————————————————————————————————————————————————————————
@@ -112,7 +181,7 @@ impl TensorPool {
         let bt = transpose(b);
         let dc_da = matmul(&dc, &bt);
         let dc_db = matmul(&at, &dc);
-        vec!(dc_da, dc_db)
+        vec![dc_da, dc_db]
     }
 
     pub fn bias_add_backward(&self, dc: &TensorNode) -> Vec<TensorNode> {
@@ -123,27 +192,99 @@ impl TensorPool {
         }).collect();
         let d_bias = TensorNode::new(d_bias_data, vec![dc.shape[1]]);
 
-        vec!(da, d_bias)
+        vec![da, d_bias]
     }
 
     pub fn gather_backward(&self, y_pred: &TensorNode, labels: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let mut dc_d_ypred = TensorNode::new_zeros(y_pred.shape.clone());
+        let mut dc_d_ypred = TensorNode::fill(y_pred.shape.clone(), 0.0);
 
         (0..y_pred.shape[0]).for_each(|batch| {
             let label = labels.get(&[batch]) as usize;
             dc_d_ypred.set(&[batch, label], dc.get(&[batch]))
         });
 
-        let dc_dlabels = TensorNode::new_zeros(dc.shape.clone());
+        let dc_dlabels = TensorNode::fill(dc.shape.clone(), 0.0);
 
-        vec!(dc_d_ypred, dc_dlabels)
+        vec![dc_d_ypred, dc_dlabels]
     }
 
     pub fn log_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
         let data = a.data.iter().zip(dc.data.iter())
             .map(|(a_k, dc_k)| dc_k / a_k)
             .collect();
-        vec!(TensorNode::new(data, dc.shape.clone()))
+        vec![TensorNode::new(data, dc.shape.clone())]
+    }
+
+    pub fn mean_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+        let n = a.data.len() as f64;
+        let data = a.data.iter()
+            .map(|_| dc.data[0] / n)
+            .collect();
+        vec![TensorNode::new(data, a.shape.clone())]
+    }
+
+    pub fn neg_backward(&self, dc: &TensorNode) -> Vec<TensorNode> {
+        let data = dc.data.iter()
+            .map(|dc_i| -dc_i)
+            .collect();
+        vec![TensorNode::new(data, dc.shape.clone())]
+    }
+
+    pub fn max_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+        let (data_a, data_b) = a.data.iter().zip(b.data.iter()).zip(dc.data.iter())
+            .map(|((a_k, b_k), &dc_k)| if a_k > b_k { 
+                (dc_k, 0.0)
+            } else {
+                (0.0, dc_k)
+            })
+        .unzip();
+        vec![TensorNode::new(data_a, dc.shape.clone()), TensorNode::new(data_b, dc.shape.clone())]
+    }
+
+    pub fn exp_backward(&self, c: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+        let data: Vec<f64> = c.data.iter().zip(dc.data.iter())
+            .map(|(&c_k, &dc_k)| c_k * dc_k)
+            .collect();
+        vec![TensorNode::new(data, c.shape.clone())]
+    }
+
+    pub fn sum_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+        let data: Vec<f64> = (0..a.shape[0]).flat_map(|row| {
+            (0..a.shape[1]).map(move |_| dc.data[row])
+        }).collect();
+        vec![TensorNode::new(data, a.shape.clone())]
+    }
+
+    pub fn div_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+        let mut data_a: Vec<f64> = Vec::with_capacity(a.data.len());
+        let mut data_b: Vec<f64> = Vec::with_capacity(b.data.len());
+
+        for row in 0..a.shape[0] {
+            let b_k = b.get(&[row]);
+            let dc_db = (0..a.shape[1]).fold(0.0, |acc, col| {
+                data_a.push(dc.get(&[row, col]) / b_k);
+                let a_k = a.get(&[row, col]);
+                let dc_k = dc.get(&[row, col]);
+                acc + a_k * dc_k
+            }) * -1.0 / b_k.powi(2);
+            data_b.push(dc_db);
+        }
+
+        vec![TensorNode::new(data_a, a.shape.clone()), TensorNode::new(data_b, b.shape.clone())]
+    }
+
+    pub fn mul_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+        let (data_a, data_b) = a.data.iter().zip(b.data.iter()).zip(dc.data.iter())
+            .map(|((a_k, b_k), dc_k)| (b_k * dc_k,  a_k * dc_k))
+            .unzip();
+        vec![TensorNode::new(data_a, dc.shape.clone()), TensorNode::new(data_b, dc.shape.clone())]
+    }
+
+    pub fn tanh_backward(&self, c: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+        let data = c.data.iter().zip(dc.data.iter())
+            .map(|(c_k, dc_k)| (1.0 - c_k.powi(2)) * dc_k)
+            .collect();
+        vec![TensorNode::new(data, c.shape.clone())]
     }
 
     // —— Backpropogate ————————————————————————————————————————————————————————————————————
@@ -168,8 +309,16 @@ impl TensorPool {
             let par_grads = match self.nodes[i].op {
                 "@" => self.matmul_backward(par_1, par_2.unwrap(), &cur_grad),
                 "bias +" => self.bias_add_backward(&cur_grad),
-                "gather" => self.gather_backward(&par_1, &par_2.unwrap(), &cur_grad),
-                "log" => self.log_backward(&par_1, &cur_grad),
+                "gather" => self.gather_backward(par_1, par_2.unwrap(), &cur_grad),
+                "log" => self.log_backward(par_1, &cur_grad),
+                "mean" => self.mean_backward(par_1, &cur_grad),
+                "neg" => self.neg_backward(&cur_grad),
+                "max" => self.max_backward(par_1, par_2.unwrap(), &cur_grad),
+                "exp" => self.exp_backward(cur, &cur_grad),
+                "sum" => self.sum_backward(par_1, &cur_grad),
+                "div" => self.div_backward(par_1, par_2.unwrap(), &cur_grad),
+                "mul" => self.mul_backward(par_1, par_2.unwrap(), &cur_grad),
+                "tanh" => self.tanh_backward(&cur, &cur_grad),
                 op => { panic!("{} not accounted for", op) }
             };
 

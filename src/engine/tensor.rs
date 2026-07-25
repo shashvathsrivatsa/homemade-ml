@@ -23,8 +23,8 @@ impl TensorNode {
         TensorNode { data, shape, strides, grad, parents: vec![], op: "" }
     }
 
-    pub fn new_zeros(shape: Vec<usize>) -> Self {
-        let data: Vec<f64> = (0..shape.iter().product()).map(|_| 0.0).collect();
+    pub fn fill(shape: Vec<usize>, num: f64) -> Self {
+        let data: Vec<f64> = vec![num; shape.iter().product()];
         let strides = Self::compute_strides(&shape);
         let grad: Vec<f64> = vec![0.0; data.len()];
         TensorNode { data, shape, strides, grad, parents: vec![], op: "" }

@@ -11,18 +11,17 @@ pub struct Layer {
 impl Layer {
     fn new(pool: &mut TensorPool, n_inputs: usize, n_outputs: usize) -> Self {
         let w = pool.new_rand(vec![n_inputs, n_outputs]);
-        let b = pool.new_zeros(vec![n_outputs]);
+        let b = pool.fill(vec![n_outputs], 0.0);
         Self { w, b }
     }
 
     fn call(&self, pool: &mut TensorPool, x: Tensor, activation: &Activation) -> Tensor {
         let c = pool.matmul(x, self.w);
         let z = pool.bias_add(c, self.b);
-        z
-            // TODO: activation
+        activation.apply(pool, z)
     }
 
-    fn parameters(&self, pool: &mut TensorPool) -> Vec<Tensor> {
+    fn parameters(&self) -> Vec<Tensor> {
         vec![self.w, self.b]
     }
 }
@@ -53,6 +52,8 @@ impl MLP {
             .map(|n_outputs_i| Layer::new(&mut pool, prev(n_outputs_i), n_outputs[n_outputs_i]))
             .collect();
 
+        pool.set_param_end();
+
         Self { layers, pool, hyperparameters, hidden_activation, output_activation }
     }
 
@@ -65,7 +66,7 @@ impl MLP {
     }
 
     pub fn parameters(&mut self) -> Vec<Tensor> {
-        self.layers.iter().flat_map(|layer| layer.parameters(&mut self.pool)).collect()
+        self.layers.iter().flat_map(|layer| layer.parameters()).collect()
     }
 
     // —— Training —————————————————————————————————————————————————————————————————————————
@@ -86,17 +87,27 @@ impl MLP {
                 let y = self.pool.new_tensor(y_data, vec![chunk.len()]);
 
                 // Forward pass
-                let y_pred: Tensor = self.call(x);
+                let y_pred = self.call(x);
 
                 // Compute loss
-                let loss = cross_entropy_loss(&mut self.pool, y, y_pred);
+                let loss = cross_entropy_loss(&mut self.pool, y_pred, y);
+                let loss_raw = self.pool.get_data(loss)[0];
+
+                // Log
+                let total_batches = indices.len().div_ceil(self.hyperparameters.batch_size);
+                let percent = (epoch * total_batches + batch_num + 1) as f64
+                    / (total_batches * self.hyperparameters.epochs) as f64;
+
                 print!(
-                    "[{}/{}] [{}/{}] Loss: ",
-                    batch_num,
-                    indices.len().div_ceil(self.hyperparameters.batch_size),
+                    "[{}>{}] {:.2}% | Epoch: {}/{} {:7}\r",
+                    "=".repeat((percent * 30.0) as usize),
+                    " ".repeat(((1.0 - percent) * 30.0) as usize),
+                    percent * 100.0,
                     epoch + 1,
                     self.hyperparameters.epochs,
-                ); self.pool.print(loss);
+                    "",
+                );
+                std::io::stdout().flush().unwrap();
 
                 // Backprop
                 self.pool.backpropogate(loss);
@@ -106,10 +117,12 @@ impl MLP {
                     self.pool.update(p, self.hyperparameters.learning_rate)
                 });
 
-                // TODO: flush
+                // Flush
+                self.pool.flush();
             }
         }
 
+        print!("\r{:70}\r", "");
         println!("{:.2?}", s.elapsed());
     }
 
@@ -118,17 +131,32 @@ impl MLP {
         let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);
         let y = self.call(x);
         let result: Vec<f64> = self.pool.get_data(y).to_owned();
-        // TODO: flush
+        self.pool.flush();
         result
     }
 
     pub fn test(&mut self, xs: &[Vec<f64>], ys: &[f64]) -> f64 {
-        xs.iter().enumerate().fold(0.0, |total_correct, (i, x)| {
+        let total_correct = xs.iter().enumerate().fold(0.0, |total_correct, (i, x)| {
             let y = self.eval(x);
             let y_pred = (0..=9).fold(0, |max_i, i| if y[i] > y[max_i] { i } else { max_i });
-            if i % 100 == 0 { println!("{:.2}% ({}/{})", i as f64 / xs.len() as f64 * 100.0, i, xs.len()) }
+
+            // Print
+            if i % 10 == 0 {
+                let filled = (i + 1) * 30 / xs.len();
+                print!(
+                    "\r[{}>{}] {:.0}%",
+                    "=".repeat(filled),
+                    " ".repeat(30 - filled),
+                    i as f64 / xs.len() as f64 * 100.0
+                );
+                std::io::stdout().flush().unwrap();
+            }
+
             if y_pred as f64 == ys[i] { total_correct + 1.0 } else { total_correct }
-        }) / xs.len() as f64
+        });
+
+        print!("\r{:50}\r", "");
+        total_correct / xs.len() as f64
     }
 
     // —— Store ————————————————————————————————————————————————————————————————————————————
