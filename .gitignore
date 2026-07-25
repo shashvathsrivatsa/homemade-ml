@@ -1,2 +1,9 @@
+# compiled
 /target
-data 
+
+# bs
+**/*.DS_Store
+
+# images
+**/*.png
+**/*.svg
