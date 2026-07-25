@@ -9,13 +9,13 @@ pub struct Layer {
 }
 
 impl Layer {
-    fn new(pool: &mut TensorPool, n_inputs: usize, n_outputs: usize) -> Self {
+    fn new(pool: &mut Pool, n_inputs: usize, n_outputs: usize) -> Self {
         let w = pool.new_rand(vec![n_inputs, n_outputs]);
         let b = pool.fill(vec![n_outputs], 0.0);
         Self { w, b }
     }
 
-    fn call(&self, pool: &mut TensorPool, x: Tensor, activation: &Activation) -> Tensor {
+    fn call(&self, pool: &mut Pool, x: Tensor, activation: &Activation) -> Tensor {
         let c = pool.matmul(x, self.w);
         let z = pool.bias_add(c, self.b);
         activation.apply(pool, z)
@@ -31,7 +31,7 @@ impl Layer {
 
 pub struct MLP {
     layers: Vec<Layer>,
-    pub pool: TensorPool,
+    pub pool: Pool,
     hyperparameters: Hyperparameters,
     hidden_activation: Activation,
     output_activation: Activation,
@@ -45,7 +45,7 @@ impl MLP {
         output_activation: Activation,
         hyperparameters: Hyperparameters,
     ) -> Self {
-        let mut pool = TensorPool::new();
+        let mut pool = Pool::new();
         let prev = |y: usize| if y == 0 { n_inputs } else { n_outputs[y - 1] };
 
         let layers = (0..n_outputs.len())
@@ -91,7 +91,6 @@ impl MLP {
 
                 // Compute loss
                 let loss = cross_entropy_loss(&mut self.pool, y_pred, y);
-                let loss_raw = self.pool.get_data(loss)[0];
 
                 // Log
                 let total_batches = indices.len().div_ceil(self.hyperparameters.batch_size);
@@ -167,6 +166,7 @@ impl MLP {
             .collect();
         let txt = weights.iter().map(|w| w.to_string()).collect::<Vec<_>>().join("\n");
         fs::write("model.txt", txt).unwrap();
+        println!("Saved model weights");
     }
 
     pub fn load(&mut self) {
@@ -178,6 +178,7 @@ impl MLP {
             self.pool.set_data(p, weights[offset..offset + size].to_vec());
             offset += size;
         }
+        println!("Loaded model weights");
     }
 }
 

@@ -1,307 +1,195 @@
-use micrograd::*;
+use homemade_ml::*;
 
-fn numerical_grad(f: impl Fn(f64) -> f64, x: f64) -> f64 {
-    let h = 1e-5;
-    (f(x + h) - f(x - h)) / (2.0 * h)
-}
+fn assert_gradient(pool: &mut Pool, tensor: Tensor, before: &[f64], expected: &[f64]) {
+    pool.update(tensor, 1.0);
 
-#[test]
-fn test_add_backward() {
-    let mut pool = Pool::new();
-    let a = pool.new_value(2.0);
-    let b = pool.new_value(3.0);
-    let c = pool.add(a, b);
-
-    pool.backpropogate(c);
-
-    assert_eq!(pool.get_grad(a), 1.0);
-    assert_eq!(pool.get_grad(b), 1.0);
-}
-
-#[test]
-fn test_mul_backward() {
-    let mut pool = Pool::new();
-    let a = pool.new_value(2.0);
-    let b = pool.new_value(3.0);
-    let c = pool.mul(a, b);
-
-    pool.backpropogate(c);
-
-    assert_eq!(pool.get_grad(a), 3.0);
-    assert_eq!(pool.get_grad(b), 2.0);
-}
-
-#[test]
-fn test_tanh_backward() {
-    let mut pool = Pool::new();
-    let a = pool.new_value(0.5);
-    let out = tanh(&mut pool, a);
-
-    pool.backpropogate(out);
-
-    let value = pool.get_data(out);
-    let expected = 1.0 - value * value;
-    assert!((pool.get_grad(a) - expected).abs() < 1e-9);
-}
-
-#[test]
-fn test_chain_mul_tanh() {
-    let mut pool = Pool::new();
-    let a = pool.new_value(0.5);
-    let b = pool.new_value(2.0);
-    let product = pool.mul(a, b);
-    let out = tanh(&mut pool, product);
-
-    pool.backpropogate(out);
-
-    let value = pool.get_data(out);
-    let dtanh = 1.0 - value * value;
-    assert!((pool.get_grad(a) - dtanh * 2.0).abs() < 1e-9);
-    assert!((pool.get_grad(b) - dtanh * 0.5).abs() < 1e-9);
-}
-
-#[test]
-fn test_leaf_diamond() {
-    let mut pool = Pool::new();
-    let a = pool.new_value(2.0);
-    let b = pool.new_value(3.0);
-    let c = pool.new_value(4.0);
-    let ab = pool.mul(a, b);
-    let ac = pool.mul(a, c);
-    let out = pool.add(ab, ac);
-
-    pool.backpropogate(out);
-
-    assert_eq!(pool.get_grad(a), 7.0);
-    assert_eq!(pool.get_grad(b), 2.0);
-    assert_eq!(pool.get_grad(c), 2.0);
-}
-
-#[test]
-fn test_nonleaf_diamond() {
-    let mut pool = Pool::new();
-    let a = pool.new_value(2.0);
-    let b = pool.new_value(3.0);
-    let c = pool.new_value(4.0);
-    let d = pool.new_value(5.0);
-    let shared = pool.add(a, b);
-    let left = pool.mul(shared, c);
-    let right = pool.mul(shared, d);
-    let out = pool.add(left, right);
-
-    pool.backpropogate(out);
-
-    assert_eq!(pool.get_grad(c), 5.0);
-    assert_eq!(pool.get_grad(d), 5.0);
-    assert_eq!(pool.get_grad(a), 9.0);
-    assert_eq!(pool.get_grad(b), 9.0);
-}
-
-fn build_1in_2h_1out(
-    xv: f64,
-    w00v: f64,
-    b0v: f64,
-    w10v: f64,
-    b1v: f64,
-    w20v: f64,
-    w21v: f64,
-    b2v: f64,
-) -> (Pool, Value, [Value; 5]) {
-    let mut pool = Pool::new();
-    let x = pool.new_value(xv);
-    let w00 = pool.new_value(w00v);
-    let b0 = pool.new_value(b0v);
-    let w10 = pool.new_value(w10v);
-    let b1 = pool.new_value(b1v);
-    let w20 = pool.new_value(w20v);
-    let w21 = pool.new_value(w21v);
-    let b2 = pool.new_value(b2v);
-
-    let xw00 = pool.mul(x, w00);
-    let h0_sum = pool.add(xw00, b0);
-    let h0 = tanh(&mut pool, h0_sum);
-    let xw10 = pool.mul(x, w10);
-    let h1_sum = pool.add(xw10, b1);
-    let h1 = tanh(&mut pool, h1_sum);
-    let h0w20 = pool.mul(h0, w20);
-    let h1w21 = pool.mul(h1, w21);
-    let out_sum = pool.add(h0w20, h1w21);
-    let out_sum = pool.add(out_sum, b2);
-    let out = tanh(&mut pool, out_sum);
-
-    (pool, out, [x, w00, w10, w20, w21])
-}
-
-fn eval_1in_2h_1out(
-    xv: f64,
-    w00: f64,
-    b0: f64,
-    w10: f64,
-    b1: f64,
-    w20: f64,
-    w21: f64,
-    b2: f64,
-) -> f64 {
-    let (pool, out, _) = build_1in_2h_1out(xv, w00, b0, w10, b1, w20, w21, b2);
-    pool.get_data(out)
-}
-
-#[test]
-fn test_mlp_single_output_neuron_no_sharing() {
-    let (xv, w00, b0, w10, b1, w20, w21, b2) =
-        (0.5, 0.3, 0.1, -0.4, 0.2, 0.6, -0.2, 0.05);
-    let (mut pool, out, [x, w00_handle, w10_handle, w20_handle, w21_handle]) =
-        build_1in_2h_1out(xv, w00, b0, w10, b1, w20, w21, b2);
-
-    pool.backpropogate(out);
-
-    let cases = [
-        (x, pool.get_grad(x), numerical_grad(|v| eval_1in_2h_1out(v, w00, b0, w10, b1, w20, w21, b2), xv)),
-        (w00_handle, pool.get_grad(w00_handle), numerical_grad(|v| eval_1in_2h_1out(xv, v, b0, w10, b1, w20, w21, b2), w00)),
-        (w10_handle, pool.get_grad(w10_handle), numerical_grad(|v| eval_1in_2h_1out(xv, w00, b0, v, b1, w20, w21, b2), w10)),
-        (w20_handle, pool.get_grad(w20_handle), numerical_grad(|v| eval_1in_2h_1out(xv, w00, b0, w10, b1, v, w21, b2), w20)),
-        (w21_handle, pool.get_grad(w21_handle), numerical_grad(|v| eval_1in_2h_1out(xv, w00, b0, w10, b1, w20, v, b2), w21)),
-    ];
-
-    for (handle, analytic, numeric) in cases {
-        assert!((analytic - numeric).abs() < 1e-4, "gradient mismatch for value {}: analytic={analytic}, numeric={numeric}", handle.0);
+    for ((before, after), expected) in before
+        .iter()
+        .zip(pool.get_data(tensor))
+        .zip(expected.iter())
+    {
+        let actual = before - after;
+        assert!(
+            (actual - expected).abs() < 1e-9,
+            "gradient mismatch: actual={actual}, expected={expected}"
+        );
     }
 }
 
-fn fwd_2layer2_neurons(
-    xv: f64,
-    w00v: f64,
-    b0v: f64,
-    w10v: f64,
-    b1v: f64,
-    w20v: f64,
-    w21v: f64,
-    b2v: f64,
-    w30v: f64,
-    w31v: f64,
-    b3v: f64,
-) -> f64 {
-    let mut pool = Pool::new();
-    let x = pool.new_value(xv);
-    let w00 = pool.new_value(w00v);
-    let b0 = pool.new_value(b0v);
-    let w10 = pool.new_value(w10v);
-    let b1 = pool.new_value(b1v);
-    let w20 = pool.new_value(w20v);
-    let w21 = pool.new_value(w21v);
-    let b2 = pool.new_value(b2v);
-    let w30 = pool.new_value(w30v);
-    let w31 = pool.new_value(w31v);
-    let b3 = pool.new_value(b3v);
-
-    let xw00 = pool.mul(x, w00);
-    let h0_sum = pool.add(xw00, b0);
-    let h0 = tanh(&mut pool, h0_sum);
-    let xw10 = pool.mul(x, w10);
-    let h1_sum = pool.add(xw10, b1);
-    let h1 = tanh(&mut pool, h1_sum);
-
-    let h0w20 = pool.mul(h0, w20);
-    let h1w21 = pool.mul(h1, w21);
-    let n20_sum = pool.add(h0w20, h1w21);
-    let n20_sum = pool.add(n20_sum, b2);
-    let n20 = tanh(&mut pool, n20_sum);
-
-    let h0w30 = pool.mul(h0, w30);
-    let h1w31 = pool.mul(h1, w31);
-    let n21_sum = pool.add(h0w30, h1w31);
-    let n21_sum = pool.add(n21_sum, b3);
-    let n21 = tanh(&mut pool, n21_sum);
-    let out = pool.add(n20, n21);
-
-    pool.get_data(out)
-}
-
 #[test]
-fn test_mlp_two_layer2_neurons_numeric_grad() {
-    let values = (0.5, 0.3, 0.1, -0.4, 0.2, 0.6, -0.2, 0.05, -0.5, 0.7, -0.1);
-    let (xv, w00, b0, w10, b1, w20, w21, b2, w30, w31, b3) = values;
-
+fn mul_backward() {
     let mut pool = Pool::new();
-    let x = pool.new_value(xv);
-    let w00_handle = pool.new_value(w00);
-    let b0_handle = pool.new_value(b0);
-    let w10_handle = pool.new_value(w10);
-    let b1_handle = pool.new_value(b1);
-    let w20_handle = pool.new_value(w20);
-    let w21_handle = pool.new_value(w21);
-    let b2_handle = pool.new_value(b2);
-    let w30_handle = pool.new_value(w30);
-    let w31_handle = pool.new_value(w31);
-    let b3_handle = pool.new_value(b3);
-
-    let xw00 = pool.mul(x, w00_handle);
-    let h0_sum = pool.add(xw00, b0_handle);
-    let h0 = tanh(&mut pool, h0_sum);
-    let xw10 = pool.mul(x, w10_handle);
-    let h1_sum = pool.add(xw10, b1_handle);
-    let h1 = tanh(&mut pool, h1_sum);
-    let h0w20 = pool.mul(h0, w20_handle);
-    let h1w21 = pool.mul(h1, w21_handle);
-    let n20_sum = pool.add(h0w20, h1w21);
-    let n20_sum = pool.add(n20_sum, b2_handle);
-    let n20 = tanh(&mut pool, n20_sum);
-    let h0w30 = pool.mul(h0, w30_handle);
-    let h1w31 = pool.mul(h1, w31_handle);
-    let n21_sum = pool.add(h0w30, h1w31);
-    let n21_sum = pool.add(n21_sum, b3_handle);
-    let n21 = tanh(&mut pool, n21_sum);
-    let out = pool.add(n20, n21);
+    let a_data = vec![2.0, 3.0];
+    let b_data = vec![4.0, 5.0];
+    let a = pool.new_tensor(a_data.clone(), vec![2]);
+    let b = pool.new_tensor(b_data.clone(), vec![2]);
+    let out = pool.mul(a, b);
 
     pool.backpropogate(out);
 
-    let num_x = numerical_grad(|v| fwd_2layer2_neurons(v, w00, b0, w10, b1, w20, w21, b2, w30, w31, b3), xv);
-    let num_w00 = numerical_grad(|v| fwd_2layer2_neurons(xv, v, b0, w10, b1, w20, w21, b2, w30, w31, b3), w00);
-    let num_w10 = numerical_grad(|v| fwd_2layer2_neurons(xv, w00, b0, v, b1, w20, w21, b2, w30, w31, b3), w10);
-
-    assert!((pool.get_grad(x) - num_x).abs() < 1e-4);
-    assert!((pool.get_grad(w00_handle) - num_w00).abs() < 1e-4);
-    assert!((pool.get_grad(w10_handle) - num_w10).abs() < 1e-4);
+    assert_gradient(&mut pool, a, &a_data, &[4.0, 5.0]);
+    assert_gradient(&mut pool, b, &b_data, &[2.0, 3.0]);
 }
 
 #[test]
-fn test_sub_backward() {
+fn tanh_backward() {
     let mut pool = Pool::new();
-    let a = pool.new_value(5.0);
-    let b = pool.new_value(3.0);
-    let out = pool.sub(a, b);
+    let input_data = vec![0.5, -0.25];
+    let input = pool.new_tensor(input_data.clone(), vec![2]);
+    let out = pool.tanh(input);
+    let expected: Vec<f64> = pool
+        .get_data(out)
+        .iter()
+        .map(|value| 1.0 - value.powi(2))
+        .collect();
 
     pool.backpropogate(out);
 
-    assert_eq!(pool.get_grad(a), 1.0);
-    assert_eq!(pool.get_grad(b), -1.0);
+    assert_gradient(&mut pool, input, &input_data, &expected);
 }
 
 #[test]
-fn test_pow2_backward() {
+fn chain_mul_tanh_backward() {
     let mut pool = Pool::new();
-    let a = pool.new_value(2.0);
-    let out = pool.pow2(a);
+    let a_data = vec![0.5, -1.0];
+    let b_data = vec![2.0, 0.25];
+    let a = pool.new_tensor(a_data.clone(), vec![2]);
+    let b = pool.new_tensor(b_data.clone(), vec![2]);
+    let product = pool.mul(a, b);
+    let out = pool.tanh(product);
+    let tanh_grad: Vec<f64> = pool
+        .get_data(out)
+        .iter()
+        .map(|value| 1.0 - value.powi(2))
+        .collect();
+    let expected_a: Vec<f64> = tanh_grad
+        .iter()
+        .zip(&b_data)
+        .map(|(grad, b)| grad * b)
+        .collect();
+    let expected_b: Vec<f64> = tanh_grad
+        .iter()
+        .zip(&a_data)
+        .map(|(grad, a)| grad * a)
+        .collect();
 
     pool.backpropogate(out);
 
-    assert!((pool.get_grad(a) - 4.0).abs() < 1e-9);
+    assert_gradient(&mut pool, a, &a_data, &expected_a);
+    assert_gradient(&mut pool, b, &b_data, &expected_b);
 }
 
 #[test]
-fn test_mlp_eval_runs_and_flushes_temporary_nodes() {
+fn shared_parent_accumulates_gradients() {
+    let mut pool = Pool::new();
+    let input_data = vec![2.0, -3.0];
+    let input = pool.new_tensor(input_data.clone(), vec![2]);
+    let squared = pool.mul(input, input);
+
+    pool.backpropogate(squared);
+
+    assert_gradient(&mut pool, input, &input_data, &[4.0, -6.0]);
+}
+
+#[test]
+fn matmul_backward() {
+    let mut pool = Pool::new();
+    let a_data = vec![1.0, 2.0, 3.0, 4.0];
+    let b_data = vec![5.0, 6.0, 7.0, 8.0];
+    let a = pool.new_tensor(a_data.clone(), vec![2, 2]);
+    let b = pool.new_tensor(b_data.clone(), vec![2, 2]);
+    let out = pool.matmul(a, b);
+
+    pool.backpropogate(out);
+
+    assert_gradient(&mut pool, a, &a_data, &[11.0, 15.0, 11.0, 15.0]);
+    assert_gradient(&mut pool, b, &b_data, &[4.0, 4.0, 6.0, 6.0]);
+}
+
+#[test]
+fn bias_add_backward() {
+    let mut pool = Pool::new();
+    let input_data = vec![1.0, 2.0, 3.0, 4.0];
+    let bias_data = vec![0.5, -0.5];
+    let input = pool.new_tensor(input_data.clone(), vec![2, 2]);
+    let bias = pool.new_tensor(bias_data.clone(), vec![2]);
+    let out = pool.bias_add(input, bias);
+
+    pool.backpropogate(out);
+
+    assert_gradient(&mut pool, input, &input_data, &[1.0; 4]);
+    assert_gradient(&mut pool, bias, &bias_data, &[2.0, 2.0]);
+}
+
+#[test]
+fn cross_entropy_backward() {
+    let mut pool = Pool::new();
+    let predictions_data = vec![0.2, 0.5, 0.3, 0.1, 0.3, 0.6];
+    let labels_data = vec![1.0, 2.0];
+    let predictions = pool.new_tensor(predictions_data.clone(), vec![2, 3]);
+    let labels = pool.new_tensor(labels_data.clone(), vec![2]);
+    let loss = cross_entropy_loss(&mut pool, predictions, labels);
+
+    assert!((pool.get_data(loss)[0] + (0.5_f64.ln() + 0.6_f64.ln()) / 2.0).abs() < 1e-9);
+
+    pool.backpropogate(loss);
+
+    assert_gradient(
+        &mut pool,
+        predictions,
+        &predictions_data,
+        &[0.0, -1.0, 0.0, 0.0, 0.0, -1.0 / 1.2],
+    );
+    assert_gradient(&mut pool, labels, &labels_data, &[0.0, 0.0]);
+}
+
+#[test]
+fn softmax_rows_sum_to_one_and_backward_is_zero_for_total() {
+    let mut pool = Pool::new();
+    let logits_data = vec![1.0, 2.0, 3.0, -1.0, 0.0, 1.0];
+    let logits = pool.new_tensor(logits_data.clone(), vec![2, 3]);
+    let probabilities = softmax(&mut pool, logits);
+
+    for row in pool.get_data(probabilities).chunks(3) {
+        assert!((row.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+    }
+
+    let row_sums = pool.sum(probabilities);
+    let total = pool.mean(row_sums);
+    pool.backpropogate(total);
+
+    assert_gradient(&mut pool, logits, &logits_data, &[0.0; 6]);
+}
+
+#[test]
+fn relu_backward() {
+    let mut pool = Pool::new();
+    let input_data = vec![-2.0, 0.0, 3.0];
+    let input = pool.new_tensor(input_data.clone(), vec![1, 3]);
+    let out = relu(&mut pool, input);
+
+    assert_eq!(pool.get_data(out), &[0.0, 0.0, 3.0]);
+
+    pool.backpropogate(out);
+
+    assert_gradient(&mut pool, input, &input_data, &[0.0, 0.0, 1.0]);
+}
+
+#[test]
+fn mlp_eval_runs_after_pool_rename() {
     let hyperparameters = Hyperparameters {
         learning_rate: 0.05,
         loss_threshold: 0.0,
         batch_size: 32,
         epochs: 10,
     };
-    let mut mlp = MLP::new(3, vec![4, 4, 1], Tanh, Tanh, hyperparameters);
-    let parameter_count = mlp.pool.param_end;
+    let mut mlp = MLP::new(3, vec![4, 2], Tanh, Softmax, hyperparameters);
 
-    let output = mlp.eval(&[2.0, 3.0, 4.0]);
+    let first = mlp.eval(&[2.0, 3.0, 4.0]);
+    let second = mlp.eval(&[2.0, 3.0, 4.0]);
 
-    assert_eq!(output.len(), 1);
-    assert!(output[0].is_finite());
-    assert_eq!(mlp.pool.nodes.len(), parameter_count);
+    assert_eq!(first.len(), 2);
+    assert!(first.iter().all(|value| value.is_finite()));
+    assert!((first.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+    assert_eq!(second.len(), 2);
 }

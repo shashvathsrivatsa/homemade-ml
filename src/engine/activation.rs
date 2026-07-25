@@ -12,7 +12,7 @@ pub enum Activation {
 pub use Activation::*;
 
 impl Activation {
-    pub fn apply(&self, pool: &mut TensorPool, logits: Tensor) -> Tensor {
+    pub fn apply(&self, pool: &mut Pool, logits: Tensor) -> Tensor {
         match self {
             Tanh => pool.tanh(logits),
             Relu => relu(pool, logits),
@@ -21,12 +21,12 @@ impl Activation {
     }
 }
 
-pub fn relu(pool: &mut TensorPool, logits: Tensor) -> Tensor {
+pub fn relu(pool: &mut Pool, logits: Tensor) -> Tensor {
     let zeros = pool.fill(pool.get_shape(logits).to_vec(), 0.0);
     pool.max(logits, zeros)
 }
 
-pub fn softmax(pool: &mut TensorPool, logits: Tensor) -> Tensor {
+pub fn softmax(pool: &mut Pool, logits: Tensor) -> Tensor {
     let exps = pool.exp(logits);
     let sum = pool.sum(exps);
     pool.div(exps, sum)

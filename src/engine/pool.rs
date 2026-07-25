@@ -1,9 +1,9 @@
 use crate::*;
 
 
-// ——— TensorPool —————————————————————————————————————————————————————————————————————————————————————————————————————
+// ——— Pool —————————————————————————————————————————————————————————————————————————————————————————————————————
 
-pub struct TensorPool {
+pub struct Pool {
     nodes: Vec<TensorNode>,
     param_end: usize,
 }
@@ -11,11 +11,11 @@ pub struct TensorPool {
 #[derive(Copy, Clone)]
 pub struct Tensor(pub usize);
 
-impl TensorPool {
+impl Pool {
 
     // —— Constructors —————————————————————————————————————————————————————————————————————
     pub fn new() -> Self {
-        TensorPool { nodes: Vec::new(), param_end: 0 }
+        Pool { nodes: Vec::new(), param_end: 0 }
     }
 
     pub fn new_tensor(&mut self, data: Vec<f64>, shape: Vec<usize>) -> Tensor {
@@ -175,6 +175,15 @@ impl TensorPool {
         self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "tanh")
     }
 
+    pub fn subtract_row_max(&mut self, a_tensor: Tensor) -> Tensor {
+        let a = &self.nodes[a_tensor.0];
+        let data = (0..a.shape[0]).flat_map(|row| {
+            let row_max = (0..a.shape[1]).map(|col| a.get(&[row, col])).fold(f64::NEG_INFINITY, f64::max);
+            (0..a.shape[1]).map(move |col| a.get(&[row, col]) - row_max)
+        }).collect();
+        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "sub_row_max")
+    }
+
     // —— Backward ops —————————————————————————————————————————————————————————————————————
     pub fn matmul_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
         let at = transpose(a);
@@ -248,7 +257,7 @@ impl TensorPool {
         vec![TensorNode::new(data, c.shape.clone())]
     }
 
-    pub fn sum_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+    pub fn broadcast_dc(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
         let data: Vec<f64> = (0..a.shape[0]).flat_map(|row| {
             (0..a.shape[1]).map(move |_| dc.data[row])
         }).collect();
@@ -315,10 +324,11 @@ impl TensorPool {
                 "neg" => self.neg_backward(&cur_grad),
                 "max" => self.max_backward(par_1, par_2.unwrap(), &cur_grad),
                 "exp" => self.exp_backward(cur, &cur_grad),
-                "sum" => self.sum_backward(par_1, &cur_grad),
+                "sum" => self.broadcast_dc(par_1, &cur_grad),
                 "div" => self.div_backward(par_1, par_2.unwrap(), &cur_grad),
                 "mul" => self.mul_backward(par_1, par_2.unwrap(), &cur_grad),
                 "tanh" => self.tanh_backward(&cur, &cur_grad),
+                "sub_row_max" => self.broadcast_dc(par_1, &cur_grad),
                 op => { panic!("{} not accounted for", op) }
             };
 

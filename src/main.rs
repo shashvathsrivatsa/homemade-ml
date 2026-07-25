@@ -51,23 +51,3 @@ fn live_test(mlp: &mut MLP) {
     println!("{}\n", (0..=9).fold(0, |max_i, i| if y[i] > y[max_i] { i } else { max_i }));
 }
 
-
-// fn _old() {
-
-//     let mut mlp = MLP::new(3, vec![4, 4, 1], Tanh, Tanh);
-
-//     let xs: Vec<Vec<f64>> = vec![
-//         vec![2.0,  3.0, -1.0],
-//         vec![3.0, -1.0,  0.5],
-//         vec![0.5,  1.0,  1.0],
-//         vec![1.0,  1.0, -1.0],
-//     ];
-
-//     let ys: Vec<f64> = vec![1.0, -1.0, -1.0, 1.0];
-
-//     mlp.train(&xs, &ys);
-
-//     let y = mlp.eval(&xs[0])[0];
-//     println!("{:.2}", y);
-// }
-
