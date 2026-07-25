@@ -6,6 +6,7 @@ use crate::*;
 pub struct Pool {
     nodes: Vec<TensorNode>,
     param_end: usize,
+    gpu: Gpu,
 }
 
 #[derive(Copy, Clone)]
@@ -15,10 +16,11 @@ impl Pool {
 
     // —— Constructors —————————————————————————————————————————————————————————————————————
     pub fn new() -> Self {
-        Pool { nodes: Vec::new(), param_end: 0 }
+        let gpu = pollster::block_on(Gpu::new());
+        Pool { nodes: Vec::new(), param_end: 0, gpu }
     }
 
-    pub fn new_tensor(&mut self, data: Vec<f64>, shape: Vec<usize>) -> Tensor {
+    pub fn new_tensor(&mut self, data: Vec<f32>, shape: Vec<usize>) -> Tensor {
         self.nodes.push(TensorNode::new(data, shape));
         Tensor(self.nodes.len() - 1)
     }
@@ -30,7 +32,7 @@ impl Pool {
         Tensor(self.nodes.len() - 1)
     }
 
-    pub fn fill(&mut self, shape: Vec<usize>, num: f64) -> Tensor {
+    pub fn fill(&mut self, shape: Vec<usize>, num: f32) -> Tensor {
         self.nodes.push(TensorNode::fill(shape, num));
         Tensor(self.nodes.len() - 1)
     }
@@ -55,11 +57,11 @@ impl Pool {
     }
 
     // —— Getters / setters ————————————————————————————————————————————————————————————————
-    pub fn get_data(&self, t: Tensor) -> &[f64] {
+    pub fn get_data(&self, t: Tensor) -> &[f32] {
         &self.nodes[t.0].data
     }
 
-    pub fn set_data(&mut self, t: Tensor, data: Vec<f64>) {
+    pub fn set_data(&mut self, t: Tensor, data: Vec<f32>) {
         self.nodes[t.0].data = data;
     }
 
@@ -67,7 +69,7 @@ impl Pool {
         &self.nodes[t.0].shape
     }
 
-    pub fn update(&mut self, t_tensor: Tensor, learning_rate: f64) {
+    pub fn update(&mut self, t_tensor: Tensor, learning_rate: f32) {
         let t: &mut TensorNode = &mut self.nodes[t_tensor.0];
         t.data.iter_mut().zip(t.grad.iter()).for_each(|(d, g)| *d -= learning_rate * g);
     }
@@ -76,7 +78,7 @@ impl Pool {
     pub fn matmul(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
         let b = &self.nodes[b_tensor.0];
-        let c = matmul(a, b);
+        let c = matmul_gpu(&self.gpu, a, b);
         self.new_kid(c, vec![a_tensor.0, b_tensor.0], "@")
     }
 
@@ -86,7 +88,7 @@ impl Pool {
         assert_eq!(bias.shape.len(), 1, "invalid bias node for bias add");
         assert_eq!(a.shape[1], bias.shape[0], "invalid tensors for bias add");
 
-        let z: Vec<f64> = (0..a.shape[0]).flat_map(|row| {
+        let z: Vec<f32> = (0..a.shape[0]).flat_map(|row| {
             (0..bias.shape[0]).map(move |col| a.get(&[row, col]) + bias.data[col])
         }).collect();
 
@@ -112,8 +114,8 @@ impl Pool {
 
     pub fn mean(&mut self, a_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
-        let sum: f64 = a.data.iter().sum();
-        let mean = sum / a.data.len() as f64;
+        let sum: f32 = a.data.iter().sum();
+        let mean = sum / a.data.len() as f32;
         self.new_kid(TensorNode::new(vec![mean], vec![1]), vec![a_tensor.0], "mean")
     }
 
@@ -128,7 +130,7 @@ impl Pool {
         let b = &self.nodes[b_tensor.0];
         assert_eq!(a.data.len(), b.data.len(), "mismatching dimensions for max");
         let data = a.data.iter().zip(b.data.iter())
-            .map(|(&a_k, &b_k)| f64::max(a_k, b_k))
+            .map(|(&a_k, &b_k)| f32::max(a_k, b_k))
             .collect();
         self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0, b_tensor.0], "max")
     }
@@ -178,7 +180,7 @@ impl Pool {
     pub fn subtract_row_max(&mut self, a_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
         let data = (0..a.shape[0]).flat_map(|row| {
-            let row_max = (0..a.shape[1]).map(|col| a.get(&[row, col])).fold(f64::NEG_INFINITY, f64::max);
+            let row_max = (0..a.shape[1]).map(|col| a.get(&[row, col])).fold(f32::NEG_INFINITY, f32::max);
             (0..a.shape[1]).map(move |col| a.get(&[row, col]) - row_max)
         }).collect();
         self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "sub_row_max")
@@ -188,15 +190,15 @@ impl Pool {
     pub fn matmul_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
         let at = transpose(a);
         let bt = transpose(b);
-        let dc_da = matmul(&dc, &bt);
-        let dc_db = matmul(&at, &dc);
+        let dc_da = matmul_gpu(&self.gpu, &dc, &bt);
+        let dc_db = matmul_gpu(&self.gpu, &at, &dc);
         vec![dc_da, dc_db]
     }
 
     pub fn bias_add_backward(&self, dc: &TensorNode) -> Vec<TensorNode> {
         let da = TensorNode::new(dc.data.clone(), dc.shape.clone());
 
-        let d_bias_data: Vec<f64> = (0..dc.shape[1]).map(|col| {
+        let d_bias_data: Vec<f32> = (0..dc.shape[1]).map(|col| {
             (0..dc.shape[0]).map(|row| dc.get(&[row, col])).sum()
         }).collect();
         let d_bias = TensorNode::new(d_bias_data, vec![dc.shape[1]]);
@@ -225,7 +227,7 @@ impl Pool {
     }
 
     pub fn mean_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let n = a.data.len() as f64;
+        let n = a.data.len() as f32;
         let data = a.data.iter()
             .map(|_| dc.data[0] / n)
             .collect();
@@ -251,22 +253,22 @@ impl Pool {
     }
 
     pub fn exp_backward(&self, c: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let data: Vec<f64> = c.data.iter().zip(dc.data.iter())
+        let data: Vec<f32> = c.data.iter().zip(dc.data.iter())
             .map(|(&c_k, &dc_k)| c_k * dc_k)
             .collect();
         vec![TensorNode::new(data, c.shape.clone())]
     }
 
     pub fn broadcast_dc(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let data: Vec<f64> = (0..a.shape[0]).flat_map(|row| {
+        let data: Vec<f32> = (0..a.shape[0]).flat_map(|row| {
             (0..a.shape[1]).map(move |_| dc.data[row])
         }).collect();
         vec![TensorNode::new(data, a.shape.clone())]
     }
 
     pub fn div_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let mut data_a: Vec<f64> = Vec::with_capacity(a.data.len());
-        let mut data_b: Vec<f64> = Vec::with_capacity(b.data.len());
+        let mut data_a: Vec<f32> = Vec::with_capacity(a.data.len());
+        let mut data_b: Vec<f32> = Vec::with_capacity(b.data.len());
 
         for row in 0..a.shape[0] {
             let b_k = b.get(&[row]);

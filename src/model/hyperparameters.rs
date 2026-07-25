@@ -4,8 +4,8 @@
 // ——— Hyperparameters ————————————————————————————————————————————————————————————————————————————————————————————————
 
 pub struct Hyperparameters {
-    pub learning_rate: f64,
-    pub loss_threshold: f64,
+    pub learning_rate: f32,
+    pub loss_threshold: f32,
     pub batch_size: usize,
     pub epochs: usize,
 }

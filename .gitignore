@@ -1,9 +1,12 @@
+# data
+data
+
 # compiled
 /target
 
 # bs
 **/*.DS_Store
-
+• 
 # images
 plot.png
 **/*.svg

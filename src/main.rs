@@ -12,7 +12,7 @@ fn main() {
     };
     let mut mlp = MLP::new(784, vec![128, 64, 10], Relu, Softmax, hyperparameters);
 
-    train(&mut mlp);
+    test(&mut mlp);
 }
 
 #[allow(dead_code)]
@@ -41,7 +41,7 @@ fn test(mlp: &mut MLP) {
 #[allow(dead_code)]
 fn live_test(mlp: &mut MLP) {
     mlp.load();
-    let x: Vec<f64> = load_bw_png("data/live.png".to_string());
+    let x: Vec<f32> = load_bw_png("data/live.png".to_string());
 
     let y = mlp.eval(&x);
 

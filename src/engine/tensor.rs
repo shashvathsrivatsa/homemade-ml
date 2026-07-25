@@ -1,4 +1,4 @@
-// use crate::*;
+use crate::*;
 
 
 // ——— Tensor —————————————————————————————————————————————————————————————————————————————————————————————————————————
@@ -6,10 +6,10 @@
 use rand::{Rng, thread_rng};
 
 pub struct TensorNode {
-    pub data: Vec<f64>,
+    pub data: Vec<f32>,
     pub shape: Vec<usize>,
     pub strides: Vec<usize>,
-    pub grad: Vec<f64>,
+    pub grad: Vec<f32>,
     pub parents: Vec<usize>,
     pub op: &'static str,
 }
@@ -17,24 +17,24 @@ pub struct TensorNode {
 impl TensorNode {
 
     // —— Constructors —————————————————————————————————————————————————————————————————————
-    pub fn new(data: Vec<f64>, shape: Vec<usize>) -> Self {
+    pub fn new(data: Vec<f32>, shape: Vec<usize>) -> Self {
         let strides = Self::compute_strides(&shape);
-        let grad: Vec<f64> = vec![0.0; data.len()];
+        let grad: Vec<f32> = vec![0.0; data.len()];
         TensorNode { data, shape, strides, grad, parents: vec![], op: "" }
     }
 
-    pub fn fill(shape: Vec<usize>, num: f64) -> Self {
-        let data: Vec<f64> = vec![num; shape.iter().product()];
+    pub fn fill(shape: Vec<usize>, num: f32) -> Self {
+        let data: Vec<f32> = vec![num; shape.iter().product()];
         let strides = Self::compute_strides(&shape);
-        let grad: Vec<f64> = vec![0.0; data.len()];
+        let grad: Vec<f32> = vec![0.0; data.len()];
         TensorNode { data, shape, strides, grad, parents: vec![], op: "" }
     }
 
     pub fn new_rand(shape: Vec<usize>) -> Self {
         let mut rng = thread_rng();
-        let data: Vec<f64> = (0..shape.iter().product()).map(|_| rng.gen_range(-1.0..1.0)).collect();
+        let data: Vec<f32> = (0..shape.iter().product()).map(|_| rng.gen_range(-1.0..1.0)).collect();
         let strides = Self::compute_strides(&shape);
-        let grad: Vec<f64> = vec![0.0; data.len()];
+        let grad: Vec<f32> = vec![0.0; data.len()];
         TensorNode { data, shape, strides, grad, parents: vec![], op: "" }
     }
 
@@ -52,16 +52,16 @@ impl TensorNode {
     }
 
     // —— Get / set ————————————————————————————————————————————————————————————————————————
-    pub fn get(&self, indices: &[usize]) -> f64 {
+    pub fn get(&self, indices: &[usize]) -> f32 {
         self.data[self.flat_index(indices)]
     }
 
-    pub fn set(&mut self, indices: &[usize], v: f64) {
+    pub fn set(&mut self, indices: &[usize], v: f32) {
         let flat_index = self.flat_index(indices);
         self.data[flat_index] = v;
     }
 
-    pub fn set_grad(&mut self, grad_value: f64) {
+    pub fn set_grad(&mut self, grad_value: f32) {
         self.grad = self.grad.iter().map(|_| grad_value).collect();
     }
 }
@@ -69,32 +69,16 @@ impl TensorNode {
 // —— Real forward ops —————————————————————————————————————————————————————————————————————
 
 pub fn transpose(a: &TensorNode) -> TensorNode {
-    let data: Vec<f64> = (0..a.shape[1]).flat_map(|col| {
+    let data: Vec<f32> = (0..a.shape[1]).flat_map(|col| {
         (0..a.shape[0]).map(move |row| a.get(&[row, col]))
     }).collect();
     TensorNode::new(data, vec![a.shape[1], a.shape[0]])
 }
 
-pub fn matmul(a: &TensorNode, b: &TensorNode) -> TensorNode {
-    assert_eq!(a.shape[1], b.shape[0], "invalid dimensions for matmul");
-    let mut c: Vec<f64> = vec![];
-
-    for row in 0..a.shape[0] {
-        for col in 0..b.shape[1] {
-            let c_n = (0..a.shape[1]).fold(0.0, |acc, n| {
-                acc + a.get(&[row, n]) * b.get(&[n, col])
-            });
-            c.push(c_n);
-        }
-    }
-
-    TensorNode::new(c, vec![a.shape[0], b.shape[1]])
-}
-
 pub fn matadd(a: &TensorNode, b: &TensorNode) -> TensorNode {
     assert_eq!(a.shape, b.shape, "invalid dimensions for matadd");
 
-    let c: Vec<f64> = a.data.iter().zip(b.data.iter())
+    let c: Vec<f32> = a.data.iter().zip(b.data.iter())
         .map(|(a_k, b_k)| a_k + b_k)
         .collect();
 

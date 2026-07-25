@@ -70,7 +70,7 @@ impl MLP {
     }
 
     // —— Training —————————————————————————————————————————————————————————————————————————
-    pub fn train_batch(&mut self, x: &[Vec<f64>], y: &[f64]) {
+    pub fn train_batch(&mut self, x: &[Vec<f32>], y: &[f32]) {
         let s = Instant::now();
 
         for epoch in 0..self.hyperparameters.epochs {
@@ -81,8 +81,8 @@ impl MLP {
             for (batch_num, chunk) in indices.chunks(self.hyperparameters.batch_size).enumerate() {
 
                 // Load
-                let x_data: Vec<f64> = chunk.iter().flat_map(|&i| x[i].iter().copied()).collect();
-                let y_data: Vec<f64> = chunk.iter().map(|&i| y[i]).collect();
+                let x_data: Vec<f32> = chunk.iter().flat_map(|&i| x[i].iter().copied()).collect();
+                let y_data: Vec<f32> = chunk.iter().map(|&i| y[i]).collect();
                 let x = self.pool.new_tensor(x_data, vec![chunk.len(), x[0].len()]);
                 let y = self.pool.new_tensor(y_data, vec![chunk.len()]);
 
@@ -94,11 +94,11 @@ impl MLP {
 
                 // Log
                 let total_batches = indices.len().div_ceil(self.hyperparameters.batch_size);
-                let percent = (epoch * total_batches + batch_num + 1) as f64
-                    / (total_batches * self.hyperparameters.epochs) as f64;
+                let percent = (epoch * total_batches + batch_num + 1) as f32
+                    / (total_batches * self.hyperparameters.epochs) as f32;
 
                 print!(
-                    "[{}>{}] {:.2}% | Epoch: {}/{} {:7}\r",
+                    "[{}>{}] {:.2}% | Epoch: {}/{} {:1}\r",
                     "=".repeat((percent * 30.0) as usize),
                     " ".repeat(((1.0 - percent) * 30.0) as usize),
                     percent * 100.0,
@@ -126,15 +126,15 @@ impl MLP {
     }
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————
-    pub fn eval(&mut self, x: &[f64]) -> Vec<f64> {
+    pub fn eval(&mut self, x: &[f32]) -> Vec<f32> {
         let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);
         let y = self.call(x);
-        let result: Vec<f64> = self.pool.get_data(y).to_owned();
+        let result: Vec<f32> = self.pool.get_data(y).to_owned();
         self.pool.flush();
         result
     }
 
-    pub fn test(&mut self, xs: &[Vec<f64>], ys: &[f64]) -> f64 {
+    pub fn test(&mut self, xs: &[Vec<f32>], ys: &[f32]) -> f32 {
         let total_correct = xs.iter().enumerate().fold(0.0, |total_correct, (i, x)| {
             let y = self.eval(x);
             let y_pred = (0..=9).fold(0, |max_i, i| if y[i] > y[max_i] { i } else { max_i });
@@ -146,22 +146,22 @@ impl MLP {
                     "\r[{}>{}] {:.0}%",
                     "=".repeat(filled),
                     " ".repeat(30 - filled),
-                    i as f64 / xs.len() as f64 * 100.0
+                    i as f32 / xs.len() as f32 * 100.0
                 );
                 std::io::stdout().flush().unwrap();
             }
 
-            if y_pred as f64 == ys[i] { total_correct + 1.0 } else { total_correct }
+            if y_pred as f32 == ys[i] { total_correct + 1.0 } else { total_correct }
         });
 
         print!("\r{:50}\r", "");
-        total_correct / xs.len() as f64
+        total_correct / xs.len() as f32
     }
 
     // —— Store ————————————————————————————————————————————————————————————————————————————
     pub fn save(&mut self) {
         let parameters = self.parameters();
-        let weights: Vec<f64> = parameters.iter()
+        let weights: Vec<f32> = parameters.iter()
             .flat_map(|&p| self.pool.get_data(p).to_owned())
             .collect();
         let txt = weights.iter().map(|w| w.to_string()).collect::<Vec<_>>().join("\n");
@@ -171,7 +171,7 @@ impl MLP {
 
     pub fn load(&mut self) {
         let txt = fs::read_to_string("model.txt").unwrap();
-        let weights: Vec<f64> = txt.lines().map(|l| l.parse().unwrap()).collect();
+        let weights: Vec<f32> = txt.lines().map(|l| l.parse().unwrap()).collect();
         let mut offset = 0;
         for &p in self.parameters().iter() {
             let size = self.pool.get_data(p).len();
