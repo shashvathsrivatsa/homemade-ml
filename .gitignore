@@ -5,5 +5,5 @@
 **/*.DS_Store
 
 # images
-**/*.png
+plot.png
 **/*.svg
