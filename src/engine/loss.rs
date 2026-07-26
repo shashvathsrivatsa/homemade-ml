@@ -13,7 +13,9 @@ use crate::*;
 
 pub fn cross_entropy_loss(pool: &mut Pool, y_pred: Tensor, labels: Tensor) -> Tensor {
     let y_prob = pool.gather(y_pred, labels);
-    let log = pool.log(y_prob);
+    let eps = pool.fill(pool.get_shape(y_prob).to_vec(), 1e-7);
+    let y_prob_safe = pool.max(y_prob, eps);
+    let log = pool.log(y_prob_safe);
     let mean = pool.mean(log);
     let neg = pool.neg(mean);
     neg

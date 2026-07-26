@@ -27,7 +27,8 @@ pub fn relu(pool: &mut Pool, logits: Tensor) -> Tensor {
 }
 
 pub fn softmax(pool: &mut Pool, logits: Tensor) -> Tensor {
-    let exps = pool.exp(logits);
+    let safe_logits = pool.subtract_row_max(logits);
+    let exps = pool.exp(safe_logits);
     let sum = pool.sum(exps);
     pool.div(exps, sum)
 }

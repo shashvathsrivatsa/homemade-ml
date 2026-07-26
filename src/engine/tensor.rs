@@ -3,7 +3,6 @@ use crate::*;
 
 // ——— Tensor —————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-use rand::{Rng, thread_rng};
 
 pub struct TensorNode {
     pub data: Vec<f32>,
@@ -32,7 +31,7 @@ impl TensorNode {
 
     pub fn new_rand(shape: Vec<usize>) -> Self {
         let mut rng = thread_rng();
-        let data: Vec<f32> = (0..shape.iter().product()).map(|_| rng.gen_range(-1.0..1.0)).collect();
+        let data: Vec<f32> = (0..shape.iter().product()).map(|_| rng.gen_range(-0.1..0.1)).collect();
         let strides = Self::compute_strides(&shape);
         let grad: Vec<f32> = vec![0.0; data.len()];
         TensorNode { data, shape, strides, grad, parents: vec![], op: "" }

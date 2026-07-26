@@ -12,7 +12,7 @@ fn main() {
     };
     let mut mlp = MLP::new(784, vec![128, 64, 10], Relu, Softmax, hyperparameters);
 
-    test(&mut mlp);
+    train(&mut mlp);
 }
 
 #[allow(dead_code)]
