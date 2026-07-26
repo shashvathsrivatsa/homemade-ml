@@ -65,6 +65,10 @@ impl Pool {
         self.nodes[t.0].data = data;
     }
 
+    pub fn get_grad(&self, t: Tensor) -> &[f32] {
+        &self.nodes[t.0].grad
+    }
+
     pub fn get_shape(&self, t: Tensor) -> &[usize] {
         &self.nodes[t.0].shape
     }

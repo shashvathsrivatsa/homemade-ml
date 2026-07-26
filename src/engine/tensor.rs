@@ -74,6 +74,22 @@ pub fn transpose(a: &TensorNode) -> TensorNode {
     TensorNode::new(data, vec![a.shape[1], a.shape[0]])
 }
 
+pub fn matmul(a: &TensorNode, b: &TensorNode) -> TensorNode {
+    assert_eq!(a.shape[1], b.shape[0], "invalid dimensions for matmul");
+    let mut c: Vec<f32> = vec![];
+
+    for row in 0..a.shape[0] {
+        for col in 0..b.shape[1] {
+            let c_n = (0..a.shape[1]).fold(0.0, |acc, n| {
+                acc + a.get(&[row, n]) * b.get(&[n, col])
+            });
+            c.push(c_n);
+        }
+    }
+
+    TensorNode::new(c, vec![a.shape[0], b.shape[1]])
+}
+
 pub fn matadd(a: &TensorNode, b: &TensorNode) -> TensorNode {
     assert_eq!(a.shape, b.shape, "invalid dimensions for matadd");
 

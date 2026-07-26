@@ -80,6 +80,11 @@ impl MLP {
 
             for (batch_num, chunk) in indices.chunks(self.hyperparameters.batch_size).enumerate() {
 
+                // TODO:
+                let w = self.parameters()[0];
+                let w1 = self.pool.get_grad(w)[0];
+                println!("{}", w1);
+
                 // Load
                 let x_data: Vec<f32> = chunk.iter().flat_map(|&i| x[i].iter().copied()).collect();
                 let y_data: Vec<f32> = chunk.iter().map(|&i| y[i]).collect();
@@ -98,17 +103,17 @@ impl MLP {
                 let percent = (epoch * total_batches + batch_num + 1) as f32
                     / (total_batches * self.hyperparameters.epochs) as f32;
 
-                print!(
-                    "[{}>{}] {:.2}% | Epoch: {}/{} | Loss: {:.2} {:1}\r",
-                    "=".repeat((percent * 30.0) as usize),
-                    " ".repeat(((1.0 - percent) * 30.0) as usize),
-                    percent * 100.0,
-                    epoch + 1,
-                    self.hyperparameters.epochs,
-                    self.pool.get_data(loss)[0],
-                    "",
-                );
-                std::io::stdout().flush().unwrap();
+                // print!(
+                //     "[{}>{}] {:.2}% | Epoch: {}/{} | Loss: {:.2} {:1}\r",
+                //     "=".repeat((percent * 30.0) as usize),
+                //     " ".repeat(((1.0 - percent) * 30.0) as usize),
+                //     percent * 100.0,
+                //     epoch + 1,
+                //     self.hyperparameters.epochs,
+                //     self.pool.get_data(loss)[0],
+                //     "",
+                // );
+                // std::io::stdout().flush().unwrap();
 
                 // Backprop
                 self.pool.backpropogate(loss);
