@@ -1,6 +1,6 @@
 use homemade_ml::*;
 
-fn assert_gradient(pool: &mut Pool, tensor: Tensor, before: &[f64], expected: &[f64]) {
+fn assert_gradient(pool: &mut Pool, tensor: Tensor, before: &[f32], expected: &[f32]) {
     pool.update(tensor, 1.0);
 
     for ((before, after), expected) in before
@@ -10,7 +10,7 @@ fn assert_gradient(pool: &mut Pool, tensor: Tensor, before: &[f64], expected: &[
     {
         let actual = before - after;
         assert!(
-            (actual - expected).abs() < 1e-9,
+            (actual - expected).abs() < 1e-5,
             "gradient mismatch: actual={actual}, expected={expected}"
         );
     }
@@ -37,7 +37,7 @@ fn tanh_backward() {
     let input_data = vec![0.5, -0.25];
     let input = pool.new_tensor(input_data.clone(), vec![2]);
     let out = pool.tanh(input);
-    let expected: Vec<f64> = pool
+    let expected: Vec<f32> = pool
         .get_data(out)
         .iter()
         .map(|value| 1.0 - value.powi(2))
@@ -57,17 +57,17 @@ fn chain_mul_tanh_backward() {
     let b = pool.new_tensor(b_data.clone(), vec![2]);
     let product = pool.mul(a, b);
     let out = pool.tanh(product);
-    let tanh_grad: Vec<f64> = pool
+    let tanh_grad: Vec<f32> = pool
         .get_data(out)
         .iter()
         .map(|value| 1.0 - value.powi(2))
         .collect();
-    let expected_a: Vec<f64> = tanh_grad
+    let expected_a: Vec<f32> = tanh_grad
         .iter()
         .zip(&b_data)
         .map(|(grad, b)| grad * b)
         .collect();
-    let expected_b: Vec<f64> = tanh_grad
+    let expected_b: Vec<f32> = tanh_grad
         .iter()
         .zip(&a_data)
         .map(|(grad, a)| grad * a)
@@ -130,7 +130,7 @@ fn cross_entropy_backward() {
     let labels = pool.new_tensor(labels_data.clone(), vec![2]);
     let loss = cross_entropy_loss(&mut pool, predictions, labels);
 
-    assert!((pool.get_data(loss)[0] + (0.5_f64.ln() + 0.6_f64.ln()) / 2.0).abs() < 1e-9);
+    assert!((pool.get_data(loss)[0] + (0.5_f32.ln() + 0.6_f32.ln()) / 2.0).abs() < 1e-5);
 
     pool.backpropogate(loss);
 
@@ -151,7 +151,7 @@ fn softmax_rows_sum_to_one_and_backward_is_zero_for_total() {
     let probabilities = softmax(&mut pool, logits);
 
     for row in pool.get_data(probabilities).chunks(3) {
-        assert!((row.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+        assert!((row.iter().sum::<f32>() - 1.0).abs() < 1e-5);
     }
 
     let row_sums = pool.sum(probabilities);
@@ -159,6 +159,34 @@ fn softmax_rows_sum_to_one_and_backward_is_zero_for_total() {
     pool.backpropogate(total);
 
     assert_gradient(&mut pool, logits, &logits_data, &[0.0; 6]);
+}
+
+#[test]
+fn softmax_cross_entropy_logits_gradient_matches_analytical_result() {
+    let mut pool = Pool::new();
+    let logits_data = vec![1.0, 2.0, 3.0, -1.0, 0.0, 1.0];
+    let logits = pool.new_tensor(logits_data, vec![2, 3]);
+    let probabilities = softmax(&mut pool, logits);
+    let probability_data = pool.get_data(probabilities).to_vec();
+    let labels = pool.new_tensor(vec![2.0, 0.0], vec![2]);
+    let loss = cross_entropy_loss(&mut pool, probabilities, labels);
+
+    pool.backpropogate(loss);
+
+    let mut expected = probability_data;
+    expected[2] -= 1.0;
+    expected[3] -= 1.0;
+    expected.iter_mut().for_each(|gradient| *gradient /= 2.0);
+
+    eprintln!("actual logits gradient:   {:?}", pool.get_grad(logits));
+    eprintln!("expected logits gradient: {expected:?}");
+
+    for (actual, expected) in pool.get_grad(logits).iter().zip(expected) {
+        assert!(
+            (actual - expected).abs() < 1e-5,
+            "softmax-cross-entropy logits gradient mismatch: actual={actual}, expected={expected}"
+        );
+    }
 }
 
 #[test]
@@ -190,6 +218,6 @@ fn mlp_eval_runs_after_pool_rename() {
 
     assert_eq!(first.len(), 2);
     assert!(first.iter().all(|value| value.is_finite()));
-    assert!((first.iter().sum::<f64>() - 1.0).abs() < 1e-9);
+    assert!((first.iter().sum::<f32>() - 1.0).abs() < 1e-5);
     assert_eq!(second.len(), 2);
 }

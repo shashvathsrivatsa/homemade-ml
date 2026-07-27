@@ -181,7 +181,7 @@ impl Pool {
         self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "tanh")
     }
 
-    pub fn subtract_row_max(&mut self, a_tensor: Tensor) -> Tensor {
+    pub fn sub_row_max(&mut self, a_tensor: Tensor) -> Tensor {
         let a = &self.nodes[a_tensor.0];
         let data = (0..a.shape[0]).flat_map(|row| {
             let row_max = (0..a.shape[1]).map(|col| a.get(&[row, col])).fold(f32::NEG_INFINITY, f32::max);
@@ -263,7 +263,7 @@ impl Pool {
         vec![TensorNode::new(data, c.shape.clone())]
     }
 
-    pub fn broadcast_dc(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
+    pub fn sum_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
         let data: Vec<f32> = (0..a.shape[0]).flat_map(|row| {
             (0..a.shape[1]).map(move |_| dc.data[row])
         }).collect();
@@ -330,11 +330,11 @@ impl Pool {
                 "neg" => self.neg_backward(&cur_grad),
                 "max" => self.max_backward(par_1, par_2.unwrap(), &cur_grad),
                 "exp" => self.exp_backward(cur, &cur_grad),
-                "sum" => self.broadcast_dc(par_1, &cur_grad),
+                "sum" => self.sum_backward(par_1, &cur_grad),
                 "div" => self.div_backward(par_1, par_2.unwrap(), &cur_grad),
                 "mul" => self.mul_backward(par_1, par_2.unwrap(), &cur_grad),
                 "tanh" => self.tanh_backward(&cur, &cur_grad),
-                "sub_row_max" => self.broadcast_dc(par_1, &cur_grad),
+                "sub_row_max" => vec![TensorNode::new(cur_grad.data.to_vec(), cur_grad.shape.to_vec())],
                 op => { panic!("{} not accounted for", op) }
             };
 
