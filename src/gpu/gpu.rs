@@ -30,14 +30,14 @@ impl Gpu {
             .await
             .expect("failed to create wgpu device");
         let shader_sources = [
-            ("matmul", include_str!("../shaders/matmul.wgsl")),
-            ("elementwise", include_str!("../shaders/elementwise.wgsl")),
-            ("binary", include_str!("../shaders/binary.wgsl")),
-            ("reduce", include_str!("../shaders/reduce.wgsl")),
-            ("gather", include_str!("../shaders/gather.wgsl")),
-            ("bias", include_str!("../shaders/bias.wgsl")),
-            ("div", include_str!("../shaders/div.wgsl")),
-            ("optim", include_str!("../shaders/optim.wgsl")),
+            ("matmul", include_str!("../../shaders/matmul.wgsl")),
+            ("elementwise", include_str!("../../shaders/elementwise.wgsl")),
+            ("binary", include_str!("../../shaders/binary.wgsl")),
+            ("reduce", include_str!("../../shaders/reduce.wgsl")),
+            ("gather", include_str!("../../shaders/gather.wgsl")),
+            ("bias", include_str!("../../shaders/bias.wgsl")),
+            ("div", include_str!("../../shaders/div.wgsl")),
+            ("optim", include_str!("../../shaders/optim.wgsl")),
         ];
         let shaders: std::collections::HashMap<_, _> = shader_sources
             .into_iter()
