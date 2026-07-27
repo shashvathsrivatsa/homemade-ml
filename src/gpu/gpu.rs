@@ -50,12 +50,19 @@ impl Gpu {
                 force_fallback_adapter: false,
                 compatible_surface: None,
             })
-            .await
+        .await
             .expect("no Vulkan GPU adapter found");
         println!("{:?}", adapter.get_info());
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default(), None)
-            .await
+            .request_device(&wgpu::DeviceDescriptor {
+                required_limits: wgpu::Limits {
+                    max_storage_buffer_binding_size: 1024 * 1024 * 1024,  // 1GB
+                    max_buffer_size: 1024 * 1024 * 1024,
+                    ..wgpu::Limits::default()
+                },
+                ..Default::default()
+            }, None)
+        .await
             .expect("failed to create wgpu device");
         let shader_sources = [
             ("matmul", include_str!("../../shaders/matmul.wgsl")),
@@ -76,7 +83,7 @@ impl Gpu {
                 });
                 (name, shader)
             })
-            .collect();
+        .collect();
         let pipeline_entries = [
             ("matmul", "matmul", "matmul"),
             ("unary", "elementwise", "unary"),
@@ -108,7 +115,7 @@ impl Gpu {
                 });
                 (pipeline_name, pipeline)
             })
-            .collect();
+        .collect();
         let one = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("constant one"),
             contents: bytemuck::bytes_of(&1.0_f32),

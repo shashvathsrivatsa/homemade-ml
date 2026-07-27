@@ -18,14 +18,6 @@ impl TensorNode {
         let strides = (0..shape.len())
             .map(|dim| shape[dim + 1..].iter().product())
             .collect();
-        Self {
-            data,
-            grad,
-            shape,
-            strides,
-            len,
-            parents: vec![],
-            op: "",
-        }
+        Self { data, grad, shape, strides, len, parents: vec![], op: "" }
     }
 }

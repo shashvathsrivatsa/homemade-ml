@@ -135,6 +135,48 @@ impl MLP {
         println!("{:.2?}", s.elapsed());
     }
 
+    pub fn train_full(&mut self, x: &[Vec<f32>], y: &[f32]) {
+        let s = Instant::now();
+        let mut steps = 0;
+
+        let x_data: Vec<f32> = x.iter().flatten().copied().collect();
+        let x = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
+        let y = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
+
+        loop {
+            steps += 1;
+
+            // Forward pass
+            let y_pred = self.call(x);
+
+            // Compute loss
+            let loss = cross_entropy_loss(&mut self.pool, y_pred, y);
+
+            // Log
+            print!("{}\r", steps);
+            std::io::stdout().flush().unwrap();
+
+            // End training if loss converges
+            if self.pool.get_data(loss)[0] < self.hyperparameters.loss_threshold {
+                print!("\r{:70}\r", "");
+                println!("{:.2?}", s.elapsed());
+                self.pool.flush();
+                break;
+            }
+
+            // Backprop
+            self.pool.backpropogate(loss);
+
+            // Update weights
+            self.parameters().iter().for_each(|&p| {
+                self.pool.update(p, self.hyperparameters.learning_rate);
+            });
+
+            // Flush
+            self.pool.flush();
+        }
+    }
+
     // —— Testing ——————————————————————————————————————————————————————————————————————————
     pub fn eval(&mut self, x: &[f32]) -> Vec<f32> {
         let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);

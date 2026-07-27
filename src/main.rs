@@ -20,7 +20,7 @@ fn train(mlp: &mut MLP) {
     let (xs, ys) = load_data(Train);
 
     println!("Training...");
-    mlp.train_batch(&xs, &ys);
+    mlp.train_full(&xs, &ys);
 
     mlp.save();
 }
