@@ -1,6 +1,5 @@
 use crate::*;
 
-
 // —— Activation ———————————————————————————————————————————————————————————————————————————
 
 pub enum Activation {
@@ -32,4 +31,3 @@ pub fn softmax(pool: &mut Pool, logits: Tensor) -> Tensor {
     let sum = pool.sum(exps);
     pool.div(exps, sum)
 }
-

@@ -9,4 +9,3 @@ pub use loss::*;
 
 pub mod activation;
 pub use activation::*;
-

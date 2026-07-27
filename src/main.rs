@@ -1,6 +1,5 @@
 use homemade_ml::*;
 
-
 // ——— Main ———————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 fn main() {
@@ -45,9 +44,14 @@ fn live_test(mlp: &mut MLP) {
 
     let y = mlp.eval(&x);
 
-    print!("\n  "); (0..=9).for_each(|i| print!("{}    ", i)); println!();
-    y.iter().for_each(|n| print!("{:.2} ", n)); println!("\n");
+    print!("\n  ");
+    (0..=9).for_each(|i| print!("{}    ", i));
+    println!();
+    y.iter().for_each(|n| print!("{:.2} ", n));
+    println!("\n");
 
-    println!("{}\n", (0..=9).fold(0, |max_i, i| if y[i] > y[max_i] { i } else { max_i }));
+    println!(
+        "{}\n",
+        (0..=9).fold(0, |max_i, i| if y[i] > y[max_i] { i } else { max_i })
+    );
 }
-

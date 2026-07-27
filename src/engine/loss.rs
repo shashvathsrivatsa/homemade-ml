@@ -1,6 +1,5 @@
 use crate::*;
 
-
 // —— Loss —————————————————————————————————————————————————————————————————————————————
 
 // pub fn mse_loss(pool: &mut Pool, ys: &[Value], y_pred: &[Value]) -> Value {
@@ -20,4 +19,3 @@ pub fn cross_entropy_loss(pool: &mut Pool, y_pred: Tensor, labels: Tensor) -> Te
     let neg = pool.neg(mean);
     neg
 }
-

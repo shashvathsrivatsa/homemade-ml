@@ -1,6 +1,5 @@
 // use crate::*;
 
-
 // ——— Hyperparameters ————————————————————————————————————————————————————————————————————————————————————————————————
 
 pub struct Hyperparameters {
@@ -9,4 +8,3 @@ pub struct Hyperparameters {
     pub batch_size: usize,
     pub epochs: usize,
 }
-

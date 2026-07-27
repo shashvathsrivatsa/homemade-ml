@@ -1,6 +1,5 @@
 use crate::*;
 
-
 // ——— Layer ——————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 pub struct Layer {
@@ -25,7 +24,6 @@ impl Layer {
         vec![self.w, self.b]
     }
 }
-
 
 // ——— MLP ————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
@@ -54,19 +52,32 @@ impl MLP {
 
         pool.set_param_end();
 
-        Self { layers, pool, hyperparameters, hidden_activation, output_activation }
+        Self {
+            layers,
+            pool,
+            hyperparameters,
+            hidden_activation,
+            output_activation,
+        }
     }
 
     // —— Propogate ————————————————————————————————————————————————————————————————————————
     fn call(&mut self, x: Tensor) -> Tensor {
         self.layers.iter().enumerate().fold(x, |acc, (i, layer)| {
-            let activation = if i == self.layers.len() - 1 { &self.output_activation } else { &self.hidden_activation };
+            let activation = if i == self.layers.len() - 1 {
+                &self.output_activation
+            } else {
+                &self.hidden_activation
+            };
             layer.call(&mut self.pool, acc, activation)
         })
     }
 
     pub fn parameters(&mut self) -> Vec<Tensor> {
-        self.layers.iter().flat_map(|layer| layer.parameters()).collect()
+        self.layers
+            .iter()
+            .flat_map(|layer| layer.parameters())
+            .collect()
     }
 
     // —— Training —————————————————————————————————————————————————————————————————————————
@@ -79,7 +90,6 @@ impl MLP {
             indices.shuffle(&mut rng);
 
             for (batch_num, chunk) in indices.chunks(self.hyperparameters.batch_size).enumerate() {
-
                 // Load
                 let x_data: Vec<f32> = chunk.iter().flat_map(|&i| x[i].iter().copied()).collect();
                 let y_data: Vec<f32> = chunk.iter().map(|&i| y[i]).collect();
@@ -152,7 +162,11 @@ impl MLP {
                 std::io::stdout().flush().unwrap();
             }
 
-            if y_pred as f32 == ys[i] { total_correct + 1.0 } else { total_correct }
+            if y_pred as f32 == ys[i] {
+                total_correct + 1.0
+            } else {
+                total_correct
+            }
         });
 
         print!("\r{:50}\r", "");
@@ -162,10 +176,15 @@ impl MLP {
     // —— Store ————————————————————————————————————————————————————————————————————————————
     pub fn save(&mut self) {
         let parameters = self.parameters();
-        let weights: Vec<f32> = parameters.iter()
+        let weights: Vec<f32> = parameters
+            .iter()
             .flat_map(|&p| self.pool.get_data(p).to_owned())
             .collect();
-        let txt = weights.iter().map(|w| w.to_string()).collect::<Vec<_>>().join("\n");
+        let txt = weights
+            .iter()
+            .map(|w| w.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
         fs::write("model.txt", txt).unwrap();
         println!("Saved model weights");
     }
@@ -176,10 +195,10 @@ impl MLP {
         let mut offset = 0;
         for &p in self.parameters().iter() {
             let size = self.pool.get_data(p).len();
-            self.pool.set_data(p, weights[offset..offset + size].to_vec());
+            self.pool
+                .set_data(p, weights[offset..offset + size].to_vec());
             offset += size;
         }
         println!("Loaded model weights");
     }
 }
-

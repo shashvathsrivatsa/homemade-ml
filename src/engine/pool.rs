@@ -1,8 +1,5 @@
 use crate::*;
 
-
-// ——— Pool —————————————————————————————————————————————————————————————————————————————————————————————————————
-
 pub struct Pool {
     nodes: Vec<TensorNode>,
     param_end: usize,
@@ -12,338 +9,492 @@ pub struct Pool {
 #[derive(Copy, Clone)]
 pub struct Tensor(pub usize);
 
+impl Default for Pool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Pool {
-
-    // —— Constructors —————————————————————————————————————————————————————————————————————
     pub fn new() -> Self {
-        let gpu = pollster::block_on(Gpu::new());
-        Pool { nodes: Vec::new(), param_end: 0, gpu }
+        Self {
+            nodes: vec![],
+            param_end: 0,
+            gpu: pollster::block_on(Gpu::new()),
+        }
     }
 
-    pub fn new_tensor(&mut self, data: Vec<f32>, shape: Vec<usize>) -> Tensor {
-        self.nodes.push(TensorNode::new(data, shape));
-        Tensor(self.nodes.len() - 1)
+    fn node_from_buffer(&self, data: wgpu::Buffer, shape: Vec<usize>) -> TensorNode {
+        let len = shape.iter().product();
+        let grad = self.gpu.empty_buffer(len);
+        TensorNode::from_buffers(data, grad, shape)
     }
 
-    pub fn new_kid(&mut self, mut node: TensorNode, parents: Vec<usize>, op: &'static str) -> Tensor {
+    fn push_node(&mut self, mut node: TensorNode, parents: Vec<usize>, op: &'static str) -> Tensor {
         node.parents = parents;
         node.op = op;
         self.nodes.push(node);
         Tensor(self.nodes.len() - 1)
     }
 
+    pub fn upload(&mut self, data: Vec<f32>, shape: Vec<usize>) -> Tensor {
+        assert_eq!(
+            data.len(),
+            shape.iter().product(),
+            "data does not match tensor shape"
+        );
+        let buffer = self.gpu.upload_buffer(&data);
+        let node = self.node_from_buffer(buffer, shape);
+        self.push_node(node, vec![], "")
+    }
+
+    pub fn new_tensor(&mut self, data: Vec<f32>, shape: Vec<usize>) -> Tensor {
+        self.upload(data, shape)
+    }
+
     pub fn fill(&mut self, shape: Vec<usize>, num: f32) -> Tensor {
-        self.nodes.push(TensorNode::fill(shape, num));
-        Tensor(self.nodes.len() - 1)
+        self.upload(vec![num; shape.iter().product()], shape)
     }
 
     pub fn new_rand(&mut self, shape: Vec<usize>) -> Tensor {
-        self.nodes.push(TensorNode::new_rand(shape));
-        Tensor(self.nodes.len() - 1)
+        let mut rng = thread_rng();
+        let data = (0..shape.iter().product())
+            .map(|_| rng.gen_range(-0.1..0.1))
+            .collect();
+        self.upload(data, shape)
     }
 
-    // —— Debug ————————————————————————————————————————————————————————————————————————————
-    pub fn print(&self, a: Tensor) {
-        println!("Tensor(data={:?}, shape={:?})", self.nodes[a.0].data, self.nodes[a.0].shape);
+    pub fn download(&self, t: Tensor) -> Vec<f32> {
+        let node = &self.nodes[t.0];
+        self.gpu.download_buffer(&node.data, node.len)
     }
 
-    // —— Optim ————————————————————————————————————————————————————————————————————————————
-    pub fn set_param_end(&mut self) {
-        self.param_end = self.nodes.len();
+    pub fn download_grad(&self, t: Tensor) -> Vec<f32> {
+        let node = &self.nodes[t.0];
+        self.gpu.download_buffer(&node.grad, node.len)
     }
 
-    pub fn flush(&mut self) {
-        self.nodes.truncate(self.param_end);
+    pub fn get_data(&self, t: Tensor) -> Vec<f32> {
+        self.download(t)
     }
-
-    // —— Getters / setters ————————————————————————————————————————————————————————————————
-    pub fn get_data(&self, t: Tensor) -> &[f32] {
-        &self.nodes[t.0].data
+    pub fn get_grad(&self, t: Tensor) -> Vec<f32> {
+        self.download_grad(t)
     }
-
-    pub fn set_data(&mut self, t: Tensor, data: Vec<f32>) {
-        self.nodes[t.0].data = data;
-    }
-
-    pub fn get_grad(&self, t: Tensor) -> &[f32] {
-        &self.nodes[t.0].grad
-    }
-
     pub fn get_shape(&self, t: Tensor) -> &[usize] {
         &self.nodes[t.0].shape
     }
 
-    pub fn update(&mut self, t_tensor: Tensor, learning_rate: f32) {
-        let t: &mut TensorNode = &mut self.nodes[t_tensor.0];
-        t.data.iter_mut().zip(t.grad.iter()).for_each(|(d, g)| *d -= learning_rate * g);
+    pub fn set_data(&mut self, t: Tensor, data: Vec<f32>) {
+        assert_eq!(data.len(), self.nodes[t.0].len);
+        self.gpu
+            .queue
+            .write_buffer(&self.nodes[t.0].data, 0, bytemuck::cast_slice(&data));
     }
 
-    // —— Forward ops ——————————————————————————————————————————————————————————————————————
-    pub fn matmul(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let b = &self.nodes[b_tensor.0];
-        let c = matmul_gpu(&self.gpu, a, b);
-        self.new_kid(c, vec![a_tensor.0, b_tensor.0], "@")
+    pub fn print(&self, t: Tensor) {
+        println!(
+            "Tensor(data={:?}, shape={:?})",
+            self.download(t),
+            self.nodes[t.0].shape
+        );
     }
 
-    pub fn bias_add(&mut self, a_tensor: Tensor, bias_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let bias = &self.nodes[bias_tensor.0];
-        assert_eq!(bias.shape.len(), 1, "invalid bias node for bias add");
-        assert_eq!(a.shape[1], bias.shape[0], "invalid tensors for bias add");
-
-        let z: Vec<f32> = (0..a.shape[0]).flat_map(|row| {
-            (0..bias.shape[0]).map(move |col| a.get(&[row, col]) + bias.data[col])
-        }).collect();
-
-        self.new_kid(TensorNode::new(z, a.shape.clone()), vec![a_tensor.0, bias_tensor.0], "bias +")
+    pub fn set_param_end(&mut self) {
+        self.param_end = self.nodes.len();
+    }
+    pub fn flush(&mut self) {
+        self.nodes.truncate(self.param_end);
     }
 
-    pub fn gather(&mut self, y_pred_tensor: Tensor, labels_tensor: Tensor) -> Tensor {
-        let y_pred = &self.nodes[y_pred_tensor.0];
-        let labels = &self.nodes[labels_tensor.0];
-
-        let data = (0..labels.shape[0]).map(|batch| {
-            let label = labels.get(&[batch]) as usize;
-            y_pred.get(&[batch, label])
-        }).collect();
-
-        self.new_kid(TensorNode::new(data, labels.shape.clone()), vec![y_pred_tensor.0, labels_tensor.0], "gather")
+    fn groups_1d(n: usize) -> (u32, u32, u32) {
+        (n.div_ceil(256) as u32, 1, 1)
     }
 
-    pub fn log(&mut self, a_tensor: Tensor) -> Tensor {
-        let data = self.nodes[a_tensor.0].data.iter().map(|v| v.ln()).collect();
-        self.new_kid(TensorNode::new(data, self.nodes[a_tensor.0].shape.clone()), vec![a_tensor.0], "log")
+    fn unary_buffer(&self, a: &wgpu::Buffer, len: usize, kind: u32) -> wgpu::Buffer {
+        let out = self.gpu.empty_buffer(len);
+        self.gpu.dispatch(
+            "unary",
+            &[a, a],
+            &[&out],
+            [len as u32, kind, 0, 0],
+            Self::groups_1d(len),
+        );
+        out
     }
 
-    pub fn mean(&mut self, a_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let sum: f32 = a.data.iter().sum();
-        let mean = sum / a.data.len() as f32;
-        self.new_kid(TensorNode::new(vec![mean], vec![1]), vec![a_tensor.0], "mean")
+    fn binary_buffer(
+        &self,
+        a: &wgpu::Buffer,
+        b: &wgpu::Buffer,
+        len: usize,
+        kind: u32,
+    ) -> wgpu::Buffer {
+        let out = self.gpu.empty_buffer(len);
+        self.gpu.dispatch(
+            "binary",
+            &[a, b],
+            &[&out],
+            [len as u32, kind, 0, 0],
+            Self::groups_1d(len),
+        );
+        out
     }
 
-    pub fn neg(&mut self, a_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let data = a.data.iter().map(|v| -v).collect();
-        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "neg")
+    fn unary_op(&mut self, a: Tensor, kind: u32, op: &'static str) -> Tensor {
+        let shape = self.nodes[a.0].shape.clone();
+        let data = self.unary_buffer(&self.nodes[a.0].data, self.nodes[a.0].len, kind);
+        let node = self.node_from_buffer(data, shape);
+        self.push_node(node, vec![a.0], op)
     }
 
-    pub fn max(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let b = &self.nodes[b_tensor.0];
-        assert_eq!(a.data.len(), b.data.len(), "mismatching dimensions for max");
-        let data = a.data.iter().zip(b.data.iter())
-            .map(|(&a_k, &b_k)| f32::max(a_k, b_k))
-            .collect();
-        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0, b_tensor.0], "max")
+    fn binary_op(&mut self, a: Tensor, b: Tensor, kind: u32, op: &'static str) -> Tensor {
+        assert_eq!(
+            self.nodes[a.0].shape, self.nodes[b.0].shape,
+            "mismatching dimensions"
+        );
+        let shape = self.nodes[a.0].shape.clone();
+        let data = self.binary_buffer(
+            &self.nodes[a.0].data,
+            &self.nodes[b.0].data,
+            self.nodes[a.0].len,
+            kind,
+        );
+        let node = self.node_from_buffer(data, shape);
+        self.push_node(node, vec![a.0, b.0], op)
     }
 
-    pub fn exp(&mut self, a_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let data = a.data.iter().map(|v| v.exp()).collect();
-        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "exp")
+    pub fn matmul(&mut self, a: Tensor, b: Tensor) -> Tensor {
+        let (m, k) = (self.nodes[a.0].shape[0], self.nodes[a.0].shape[1]);
+        let n = self.nodes[b.0].shape[1];
+        assert_eq!(k, self.nodes[b.0].shape[0], "invalid dimensions for matmul");
+        let data = self.gpu.empty_buffer(m * n);
+        self.gpu.dispatch(
+            "matmul",
+            &[&self.nodes[a.0].data, &self.nodes[b.0].data],
+            &[&data],
+            [m as u32, k as u32, n as u32, 0],
+            (m.div_ceil(16) as u32, n.div_ceil(16) as u32, 1),
+        );
+        let node = self.node_from_buffer(data, vec![m, n]);
+        self.push_node(node, vec![a.0, b.0], "@")
     }
 
-    // a = [batch, n_classes]; c = [batch]
-    pub fn sum(&mut self, a_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let data = (0..a.shape[0]).map(|row| {
-            (0..a.shape[1]).map(|col| a.get(&[row, col])).sum()
-        }).collect();
-        self.new_kid(TensorNode::new(data, vec![a.shape[0]]), vec![a_tensor.0], "sum")
+    pub fn bias_add(&mut self, a: Tensor, bias: Tensor) -> Tensor {
+        let (rows, cols) = (self.nodes[a.0].shape[0], self.nodes[a.0].shape[1]);
+        assert_eq!(
+            self.nodes[bias.0].shape,
+            vec![cols],
+            "invalid bias node for bias add"
+        );
+        let data = self.gpu.empty_buffer(rows * cols);
+        self.gpu.dispatch(
+            "bias_add",
+            &[&self.nodes[a.0].data, &self.nodes[bias.0].data],
+            &[&data],
+            [rows as u32, cols as u32, 0, 0],
+            Self::groups_1d(rows * cols),
+        );
+        let node = self.node_from_buffer(data, vec![rows, cols]);
+        self.push_node(node, vec![a.0, bias.0], "bias +")
     }
 
-    // a = [batch, n_classes]; b = [batch]; c = [batch, n_classes]
-    pub fn div(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let b = &self.nodes[b_tensor.0];
-        let data = (0..a.shape[0]).flat_map(|row| {
-            (0..a.shape[1]).map(move |col| a.get(&[row, col]) / b.get(&[row]))
-        }).collect();
-        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0, b_tensor.0], "div")
+    pub fn gather(&mut self, values: Tensor, labels: Tensor) -> Tensor {
+        let rows = self.nodes[labels.0].len;
+        let cols = self.nodes[values.0].shape[1];
+        let data = self.gpu.empty_buffer(rows);
+        self.gpu.dispatch(
+            "gather",
+            &[&self.nodes[values.0].data, &self.nodes[labels.0].data],
+            &[&data],
+            [rows as u32, cols as u32, 0, 0],
+            Self::groups_1d(rows),
+        );
+        let node = self.node_from_buffer(data, vec![rows]);
+        self.push_node(node, vec![values.0, labels.0], "gather")
     }
 
-    pub fn mul(&mut self, a_tensor: Tensor, b_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let b = &self.nodes[b_tensor.0];
-        let data = a.data.iter().zip(b.data.iter())
-            .map(|(a_k, b_k)| a_k * b_k)
-            .collect();
-        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0, b_tensor.0], "mul")
+    pub fn log(&mut self, a: Tensor) -> Tensor {
+        self.unary_op(a, 2, "log")
+    }
+    pub fn neg(&mut self, a: Tensor) -> Tensor {
+        self.unary_op(a, 3, "neg")
+    }
+    pub fn exp(&mut self, a: Tensor) -> Tensor {
+        self.unary_op(a, 1, "exp")
+    }
+    pub fn tanh(&mut self, a: Tensor) -> Tensor {
+        self.unary_op(a, 0, "tanh")
+    }
+    pub fn mul(&mut self, a: Tensor, b: Tensor) -> Tensor {
+        self.binary_op(a, b, 1, "mul")
+    }
+    pub fn max(&mut self, a: Tensor, b: Tensor) -> Tensor {
+        self.binary_op(a, b, 2, "max")
+    }
+    pub fn matadd(&mut self, a: Tensor, b: Tensor) -> Tensor {
+        self.binary_op(a, b, 0, "matadd")
     }
 
-    pub fn tanh(&mut self, a_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let data = a.data.iter().map(|a_k| {
-            (1.0 - (-2.0 * a_k).exp()) / (1.0 + (-2.0 * a_k).exp())
-        }).collect();
-        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "tanh")
+    pub fn mean(&mut self, a: Tensor) -> Tensor {
+        let len = self.nodes[a.0].len;
+        let sum = self.gpu.empty_buffer(1);
+        self.gpu.dispatch(
+            "sum",
+            &[&self.nodes[a.0].data, &self.nodes[a.0].data],
+            &[&sum],
+            [1, len as u32, 0, 0],
+            (1, 1, 1),
+        );
+        let divisor = self.gpu.upload_buffer(&[len as f32]);
+        let data = self.gpu.empty_buffer(1);
+        self.gpu
+            .dispatch("div", &[&sum, &divisor], &[&data], [1, 1, 0, 0], (1, 1, 1));
+        let node = self.node_from_buffer(data, vec![1]);
+        self.push_node(node, vec![a.0], "mean")
     }
 
-    pub fn sub_row_max(&mut self, a_tensor: Tensor) -> Tensor {
-        let a = &self.nodes[a_tensor.0];
-        let data = (0..a.shape[0]).flat_map(|row| {
-            let row_max = (0..a.shape[1]).map(|col| a.get(&[row, col])).fold(f32::NEG_INFINITY, f32::max);
-            (0..a.shape[1]).map(move |col| a.get(&[row, col]) - row_max)
-        }).collect();
-        self.new_kid(TensorNode::new(data, a.shape.clone()), vec![a_tensor.0], "sub_row_max")
+    pub fn sum(&mut self, a: Tensor) -> Tensor {
+        let (rows, cols) = (self.nodes[a.0].shape[0], self.nodes[a.0].shape[1]);
+        let data = self.gpu.empty_buffer(rows);
+        self.gpu.dispatch(
+            "sum",
+            &[&self.nodes[a.0].data, &self.nodes[a.0].data],
+            &[&data],
+            [rows as u32, cols as u32, 0, 0],
+            Self::groups_1d(rows),
+        );
+        let node = self.node_from_buffer(data, vec![rows]);
+        self.push_node(node, vec![a.0], "sum")
     }
 
-    // —— Backward ops —————————————————————————————————————————————————————————————————————
-    pub fn matmul_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let at = transpose(a);
-        let bt = transpose(b);
-        let dc_da = matmul_gpu(&self.gpu, &dc, &bt);
-        let dc_db = matmul_gpu(&self.gpu, &at, &dc);
-        vec![dc_da, dc_db]
+    pub fn div(&mut self, a: Tensor, b: Tensor) -> Tensor {
+        let (rows, cols) = (self.nodes[a.0].shape[0], self.nodes[a.0].shape[1]);
+        assert_eq!(self.nodes[b.0].len, rows);
+        let data = self.gpu.empty_buffer(rows * cols);
+        self.gpu.dispatch(
+            "div",
+            &[&self.nodes[a.0].data, &self.nodes[b.0].data],
+            &[&data],
+            [rows as u32, cols as u32, 0, 0],
+            Self::groups_1d(rows * cols),
+        );
+        let node = self.node_from_buffer(data, self.nodes[a.0].shape.clone());
+        self.push_node(node, vec![a.0, b.0], "div")
     }
 
-    pub fn bias_add_backward(&self, dc: &TensorNode) -> Vec<TensorNode> {
-        let da = TensorNode::new(dc.data.clone(), dc.shape.clone());
-
-        let d_bias_data: Vec<f32> = (0..dc.shape[1]).map(|col| {
-            (0..dc.shape[0]).map(|row| dc.get(&[row, col])).sum()
-        }).collect();
-        let d_bias = TensorNode::new(d_bias_data, vec![dc.shape[1]]);
-
-        vec![da, d_bias]
+    pub fn sub_row_max(&mut self, a: Tensor) -> Tensor {
+        let (rows, cols) = (self.nodes[a.0].shape[0], self.nodes[a.0].shape[1]);
+        let data = self.gpu.empty_buffer(rows * cols);
+        self.gpu.dispatch(
+            "sub_row_max",
+            &[&self.nodes[a.0].data, &self.nodes[a.0].data],
+            &[&data],
+            [rows as u32, cols as u32, 0, 0],
+            Self::groups_1d(rows),
+        );
+        let node = self.node_from_buffer(data, self.nodes[a.0].shape.clone());
+        self.push_node(node, vec![a.0], "sub_row_max")
     }
 
-    pub fn gather_backward(&self, y_pred: &TensorNode, labels: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let mut dc_d_ypred = TensorNode::fill(y_pred.shape.clone(), 0.0);
-
-        (0..y_pred.shape[0]).for_each(|batch| {
-            let label = labels.get(&[batch]) as usize;
-            dc_d_ypred.set(&[batch, label], dc.get(&[batch]))
-        });
-
-        let dc_dlabels = TensorNode::fill(dc.shape.clone(), 0.0);
-
-        vec![dc_d_ypred, dc_dlabels]
+    pub fn update(&mut self, t: Tensor, learning_rate: f32) {
+        let node = &self.nodes[t.0];
+        let out = self.gpu.empty_buffer(node.len);
+        self.gpu.dispatch(
+            "update",
+            &[&node.data, &node.grad],
+            &[&out],
+            [node.len as u32, learning_rate.to_bits(), 0, 0],
+            Self::groups_1d(node.len),
+        );
+        self.nodes[t.0].data = out;
     }
 
-    pub fn log_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let data = a.data.iter().zip(dc.data.iter())
-            .map(|(a_k, dc_k)| dc_k / a_k)
-            .collect();
-        vec![TensorNode::new(data, dc.shape.clone())]
-    }
-
-    pub fn mean_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let n = a.data.len() as f32;
-        let data = a.data.iter()
-            .map(|_| dc.data[0] / n)
-            .collect();
-        vec![TensorNode::new(data, a.shape.clone())]
-    }
-
-    pub fn neg_backward(&self, dc: &TensorNode) -> Vec<TensorNode> {
-        let data = dc.data.iter()
-            .map(|dc_i| -dc_i)
-            .collect();
-        vec![TensorNode::new(data, dc.shape.clone())]
-    }
-
-    pub fn max_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let (data_a, data_b) = a.data.iter().zip(b.data.iter()).zip(dc.data.iter())
-            .map(|((a_k, b_k), &dc_k)| if a_k > b_k { 
-                (dc_k, 0.0)
-            } else {
-                (0.0, dc_k)
-            })
-        .unzip();
-        vec![TensorNode::new(data_a, dc.shape.clone()), TensorNode::new(data_b, dc.shape.clone())]
-    }
-
-    pub fn exp_backward(&self, c: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let data: Vec<f32> = c.data.iter().zip(dc.data.iter())
-            .map(|(&c_k, &dc_k)| c_k * dc_k)
-            .collect();
-        vec![TensorNode::new(data, c.shape.clone())]
-    }
-
-    pub fn sum_backward(&self, a: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let data: Vec<f32> = (0..a.shape[0]).flat_map(|row| {
-            (0..a.shape[1]).map(move |_| dc.data[row])
-        }).collect();
-        vec![TensorNode::new(data, a.shape.clone())]
-    }
-
-    pub fn div_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let mut data_a: Vec<f32> = Vec::with_capacity(a.data.len());
-        let mut data_b: Vec<f32> = Vec::with_capacity(b.data.len());
-
-        for row in 0..a.shape[0] {
-            let b_k = b.get(&[row]);
-            let dc_db = (0..a.shape[1]).fold(0.0, |acc, col| {
-                data_a.push(dc.get(&[row, col]) / b_k);
-                let a_k = a.get(&[row, col]);
-                let dc_k = dc.get(&[row, col]);
-                acc + a_k * dc_k
-            }) * -1.0 / b_k.powi(2);
-            data_b.push(dc_db);
+    fn backward_for(&self, i: usize) -> Vec<wgpu::Buffer> {
+        let cur = &self.nodes[i];
+        let a = &self.nodes[cur.parents[0]];
+        let b = cur.parents.get(1).map(|&p| &self.nodes[p]);
+        let alloc = |len| self.gpu.empty_buffer(len);
+        match cur.op {
+            "@" => {
+                let b = b.unwrap();
+                let (m, k, n) = (a.shape[0], a.shape[1], b.shape[1]);
+                let da = alloc(a.len);
+                self.gpu.dispatch(
+                    "matmul",
+                    &[&cur.grad, &b.data],
+                    &[&da],
+                    [m as u32, n as u32, k as u32, 2],
+                    (m.div_ceil(16) as u32, k.div_ceil(16) as u32, 1),
+                );
+                let db = alloc(b.len);
+                self.gpu.dispatch(
+                    "matmul",
+                    &[&a.data, &cur.grad],
+                    &[&db],
+                    [k as u32, m as u32, n as u32, 1],
+                    (k.div_ceil(16) as u32, n.div_ceil(16) as u32, 1),
+                );
+                vec![da, db]
+            }
+            "bias +" => {
+                let da = self.unary_buffer(&cur.grad, cur.len, 9);
+                let db = alloc(b.unwrap().len);
+                self.gpu.dispatch(
+                    "bias_add_backward",
+                    &[&cur.grad, &cur.grad],
+                    &[&db],
+                    [cur.shape[0] as u32, cur.shape[1] as u32, 0, 0],
+                    Self::groups_1d(cur.shape[1]),
+                );
+                vec![da, db]
+            }
+            "gather" => {
+                let labels = b.unwrap();
+                let da = alloc(a.len);
+                self.gpu.dispatch(
+                    "gather_backward",
+                    &[&cur.grad, &labels.data],
+                    &[&da],
+                    [a.shape[0] as u32, a.shape[1] as u32, 0, 0],
+                    Self::groups_1d(a.len),
+                );
+                vec![da, self.gpu.empty_buffer(labels.len)]
+            }
+            "log" => {
+                let out = alloc(a.len);
+                self.gpu.dispatch(
+                    "unary",
+                    &[&a.data, &cur.grad],
+                    &[&out],
+                    [a.len as u32, 6, 0, 0],
+                    Self::groups_1d(a.len),
+                );
+                vec![out]
+            }
+            "mean" => {
+                let out = alloc(a.len);
+                self.gpu.dispatch(
+                    "mean_backward",
+                    &[&cur.grad, &cur.grad],
+                    &[&out],
+                    [a.len as u32, 0, 0, 0],
+                    Self::groups_1d(a.len),
+                );
+                vec![out]
+            }
+            "neg" => vec![self.unary_buffer(&cur.grad, cur.len, 7)],
+            "exp" | "tanh" => {
+                let out = alloc(cur.len);
+                let kind = if cur.op == "exp" { 5 } else { 8 };
+                self.gpu.dispatch(
+                    "unary",
+                    &[&cur.data, &cur.grad],
+                    &[&out],
+                    [cur.len as u32, kind, 0, 0],
+                    Self::groups_1d(cur.len),
+                );
+                vec![out]
+            }
+            "max" | "mul" => {
+                let b = b.unwrap();
+                let kinds = if cur.op == "max" { (5, 6) } else { (3, 4) };
+                let da = alloc(cur.len);
+                let db = alloc(cur.len);
+                self.gpu.copy_buffer(&cur.grad, &da, cur.len);
+                self.gpu.copy_buffer(&cur.grad, &db, cur.len);
+                self.gpu.dispatch(
+                    "binary",
+                    &[&a.data, &b.data],
+                    &[&da],
+                    [cur.len as u32, kinds.0, 0, 0],
+                    Self::groups_1d(cur.len),
+                );
+                self.gpu.dispatch(
+                    "binary",
+                    &[&a.data, &b.data],
+                    &[&db],
+                    [cur.len as u32, kinds.1, 0, 0],
+                    Self::groups_1d(cur.len),
+                );
+                vec![da, db]
+            }
+            "sum" => {
+                let out = alloc(a.len);
+                self.gpu.dispatch(
+                    "sum_backward",
+                    &[&cur.grad, &cur.grad],
+                    &[&out],
+                    [a.shape[0] as u32, a.shape[1] as u32, 0, 0],
+                    Self::groups_1d(a.len),
+                );
+                vec![out]
+            }
+            "div" => {
+                let b = b.unwrap();
+                let da = alloc(a.len);
+                self.gpu.dispatch(
+                    "div_backward_a",
+                    &[&b.data, &cur.grad],
+                    &[&da],
+                    [a.shape[0] as u32, a.shape[1] as u32, 0, 0],
+                    Self::groups_1d(a.len),
+                );
+                let db = alloc(a.len);
+                self.gpu.copy_buffer(&cur.grad, &db, cur.len);
+                self.gpu.dispatch(
+                    "div_backward_b",
+                    &[&a.data, &b.data],
+                    &[&db],
+                    [a.shape[0] as u32, a.shape[1] as u32, 0, 0],
+                    Self::groups_1d(a.shape[0]),
+                );
+                vec![da, db]
+            }
+            "sub_row_max" => {
+                let out = alloc(a.len);
+                self.gpu.dispatch(
+                    "sub_row_max_backward",
+                    &[&a.data, &cur.grad],
+                    &[&out],
+                    [a.shape[0] as u32, a.shape[1] as u32, 0, 0],
+                    Self::groups_1d(a.shape[0]),
+                );
+                vec![out]
+            }
+            "matadd" => vec![
+                self.unary_buffer(&cur.grad, cur.len, 9),
+                self.unary_buffer(&cur.grad, cur.len, 9),
+            ],
+            op => panic!("{op} not accounted for"),
         }
-
-        vec![TensorNode::new(data_a, a.shape.clone()), TensorNode::new(data_b, b.shape.clone())]
     }
 
-    pub fn mul_backward(&self, a: &TensorNode, b: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let (data_a, data_b) = a.data.iter().zip(b.data.iter()).zip(dc.data.iter())
-            .map(|((a_k, b_k), dc_k)| (b_k * dc_k,  a_k * dc_k))
-            .unzip();
-        vec![TensorNode::new(data_a, dc.shape.clone()), TensorNode::new(data_b, dc.shape.clone())]
-    }
-
-    pub fn tanh_backward(&self, c: &TensorNode, dc: &TensorNode) -> Vec<TensorNode> {
-        let data = c.data.iter().zip(dc.data.iter())
-            .map(|(c_k, dc_k)| (1.0 - c_k.powi(2)) * dc_k)
-            .collect();
-        vec![TensorNode::new(data, c.shape.clone())]
-    }
-
-    // —— Backpropogate ————————————————————————————————————————————————————————————————————
-    pub fn backpropogate(&mut self, root_tensor: Tensor) {
-
-        // Zero grads
-        (0..root_tensor.0).for_each(|i| self.nodes[i].set_grad(0.0));
-
-        // Initial node
-        let root = &mut self.nodes[root_tensor.0];
-        root.set_grad(1.0);
-
-        // Run backward
-        for i in (0..=root_tensor.0).rev() {
-            let cur = &self.nodes[i];
-            if cur.parents.len() == 0 { continue; }
-
-            let cur_grad = TensorNode::new(cur.grad.clone(), cur.shape.clone());
-            let par_1 = &self.nodes[cur.parents[0]];
-            let par_2 = if cur.parents.len() == 2 { Some(&self.nodes[cur.parents[1]]) } else { None };
-
-            let par_grads = match self.nodes[i].op {
-                "@" => self.matmul_backward(par_1, par_2.unwrap(), &cur_grad),
-                "bias +" => self.bias_add_backward(&cur_grad),
-                "gather" => self.gather_backward(par_1, par_2.unwrap(), &cur_grad),
-                "log" => self.log_backward(par_1, &cur_grad),
-                "mean" => self.mean_backward(par_1, &cur_grad),
-                "neg" => self.neg_backward(&cur_grad),
-                "max" => self.max_backward(par_1, par_2.unwrap(), &cur_grad),
-                "exp" => self.exp_backward(cur, &cur_grad),
-                "sum" => self.sum_backward(par_1, &cur_grad),
-                "div" => self.div_backward(par_1, par_2.unwrap(), &cur_grad),
-                "mul" => self.mul_backward(par_1, par_2.unwrap(), &cur_grad),
-                "tanh" => self.tanh_backward(&cur, &cur_grad),
-                "sub_row_max" => vec![TensorNode::new(cur_grad.data.to_vec(), cur_grad.shape.to_vec())],
-                op => { panic!("{} not accounted for", op) }
-            };
-
-            for p in 0..cur.parents.len() {
-                let par_idx = self.nodes[i].parents[p];
-                let old_par_grad = TensorNode::new(self.nodes[par_idx].grad.clone(), self.nodes[par_idx].shape.clone());
-                self.nodes[par_idx].grad = matadd(&old_par_grad, &par_grads[p]).data;
+    pub fn backpropogate(&mut self, root: Tensor) {
+        for node in &self.nodes[..=root.0] {
+            self.gpu.clear_buffer(&node.grad);
+        }
+        self.gpu.dispatch(
+            "unary",
+            &[&self.gpu.one, &self.gpu.one],
+            &[&self.nodes[root.0].grad],
+            [self.nodes[root.0].len as u32, 10, 0, 0],
+            Self::groups_1d(self.nodes[root.0].len),
+        );
+        for i in (0..=root.0).rev() {
+            if self.nodes[i].parents.is_empty() {
+                continue;
+            }
+            let grads = self.backward_for(i);
+            for (parent_slot, contribution) in grads.into_iter().enumerate() {
+                let parent = self.nodes[i].parents[parent_slot];
+                let accumulated = self.binary_buffer(
+                    &self.nodes[parent].grad,
+                    &contribution,
+                    self.nodes[parent].len,
+                    0,
+                );
+                self.nodes[parent].grad = accumulated;
             }
         }
     }
 }
-
