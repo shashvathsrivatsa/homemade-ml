@@ -15,6 +15,5 @@ pub use std::io::Write;
 pub use std::time::Instant;
 
 pub use image::ImageReader;
-pub use pollster::block_on;
 pub use rand::{Rng, seq::SliceRandom, thread_rng};
 pub use wgpu::util::DeviceExt;

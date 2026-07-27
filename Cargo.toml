@@ -7,6 +7,5 @@ edition = "2024"
 rand = "0.8"
 image = "0.25.10"
 wgpu = "22"
-pollster = "0.3"
 bytemuck = { version = "1", features = ["derive"] }
 

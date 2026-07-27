@@ -1,4 +1,28 @@
 use crate::*;
+use std::future::Future;
+use std::sync::Arc;
+use std::task::{Context, Poll, Wake, Waker};
+
+struct ThreadWaker(std::thread::Thread);
+
+impl Wake for ThreadWaker {
+    fn wake(self: Arc<Self>) {
+        self.0.unpark();
+    }
+}
+
+fn block_on<F: Future>(future: F) -> F::Output {
+    let mut future = Box::pin(future);
+    let waker = Waker::from(Arc::new(ThreadWaker(std::thread::current())));
+    let mut context = Context::from_waker(&waker);
+
+    loop {
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => std::thread::park(),
+        }
+    }
+}
 
 pub struct Gpu {
     pub device: wgpu::Device,
@@ -8,7 +32,11 @@ pub struct Gpu {
 }
 
 impl Gpu {
-    pub async fn new() -> Self {
+    pub fn new() -> Self {
+        block_on(Self::new_async())
+    }
+
+    async fn new_async() -> Self {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(target_os = "linux")]
             backends: wgpu::Backends::VULKAN,
