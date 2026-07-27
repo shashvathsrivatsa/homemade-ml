@@ -4,6 +4,9 @@ pub use tensor::*;
 pub mod pool;
 pub use pool::*;
 
+pub mod pool_ops;
+pub use pool_ops::*;
+
 pub mod loss;
 pub use loss::*;
 
