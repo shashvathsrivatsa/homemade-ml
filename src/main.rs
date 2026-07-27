@@ -1,17 +1,18 @@
 use homemade_ml::*;
 
+
 // ——— Main ———————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 fn main() {
     let hyperparameters = Hyperparameters {
         learning_rate: 0.05,
         loss_threshold: 0.0,
-        batch_size: 32,
+        batch_size: 20000,
         epochs: 10,
     };
     let mut mlp = MLP::new(784, vec![128, 64, 10], Relu, Softmax, hyperparameters);
 
-    test(&mut mlp);
+    train(&mut mlp);
 }
 
 #[allow(dead_code)]
@@ -55,3 +56,4 @@ fn live_test(mlp: &mut MLP) {
         (0..=9).fold(0, |max_i, i| if y[i] > y[max_i] { i } else { max_i })
     );
 }
+

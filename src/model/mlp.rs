@@ -1,5 +1,6 @@
 use crate::*;
 
+
 // ——— Layer ——————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 pub struct Layer {
@@ -108,13 +109,12 @@ impl MLP {
                     / (total_batches * self.hyperparameters.epochs) as f32;
 
                 print!(
-                    "[{}>{}] {:.2}% | Epoch: {}/{} | Loss: {:.2} {:1}\r",
+                    "[{}>{}] {:.2}% | Epoch: {}/{} {:1}\r",
                     "=".repeat((percent * 30.0) as usize),
                     " ".repeat(((1.0 - percent) * 30.0) as usize),
                     percent * 100.0,
                     epoch + 1,
                     self.hyperparameters.epochs,
-                    self.pool.get_data(loss)[0],
                     "",
                 );
                 std::io::stdout().flush().unwrap();

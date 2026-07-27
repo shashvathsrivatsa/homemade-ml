@@ -1,5 +1,8 @@
 use crate::*;
 
+
+// ——— Pool ———————————————————————————————————————————————————————————————————————————————————————————————————————————
+
 pub struct Pool {
     nodes: Vec<TensorNode>,
     param_end: usize,
@@ -9,13 +12,8 @@ pub struct Pool {
 #[derive(Copy, Clone)]
 pub struct Tensor(pub usize);
 
-impl Default for Pool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl Pool {
+
     pub fn new() -> Self {
         Self {
             nodes: vec![],
