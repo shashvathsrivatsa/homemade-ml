@@ -7,7 +7,11 @@ impl Pool {
     // —— Helpers ——————————————————————————————————————————————————————————————————————————
 
     pub fn groups_1d(n: usize) -> (u32, u32, u32) {
-        (n.div_ceil(256) as u32, 1, 1)
+        const WG: usize = 256;
+        let total = n.div_ceil(WG) as u32;
+        let x = total.min(65535);
+        let y = (total + 65534) / 65535;
+        (x, y, 1)
     }
 
     pub fn unary_buffer(&self, a: &wgpu::Buffer, len: usize, kind: u32) -> wgpu::Buffer {
@@ -65,7 +69,34 @@ impl Pool {
 
     // —— Forward ops ——————————————————————————————————————————————————————————————————————
 
+    pub fn reshape(&mut self, a: Tensor, shape: Vec<usize>) -> Tensor {
+        assert_eq!(
+            self.nodes[a.0].len,
+            shape.iter().product(),
+            "cannot reshape tensor with different element count"
+        );
+        let data = self.unary_buffer(&self.nodes[a.0].data, self.nodes[a.0].len, 9);
+        let node = self.node_from_buffer(data, shape);
+        self.push_node(node, vec![a.0], "reshape")
+    }
+
     pub fn matmul(&mut self, a: Tensor, b: Tensor) -> Tensor {
+        let a_squeezed = self.nodes[a.0].shape.len() == 1;
+        let a = if a_squeezed {
+            let n = self.nodes[a.0].shape[0];
+            self.reshape(a, vec![1, n])
+        } else {
+            a
+        };
+
+        let b_squeezed = self.nodes[b.0].shape.len() == 1;
+        let b = if b_squeezed {
+            let n = self.nodes[b.0].shape[0];
+            self.reshape(b, vec![n, 1])
+        } else {
+            b
+        };
+
         let (m, k) = (self.nodes[a.0].shape[0], self.nodes[a.0].shape[1]);
         let n = self.nodes[b.0].shape[1];
         assert_eq!(k, self.nodes[b.0].shape[0], "invalid dimensions for matmul");
@@ -357,8 +388,8 @@ impl Pool {
                 self.unary_buffer(&cur.grad, cur.len, 9),
                 self.unary_buffer(&cur.grad, cur.len, 9),
             ],
+            "reshape" => vec![self.unary_buffer(&cur.grad, cur.len, 9)],
             op => panic!("{op} not accounted for"),
         }
     }
 }
-

@@ -9,7 +9,7 @@ struct Params { len: u32, op: u32, unused_0: u32, unused_1: u32 };
 // 5 max_backward_a, 6 max_backward_b
 @compute @workgroup_size(256)
 fn binary(@builtin(global_invocation_id) id: vec3<u32>) {
-    let i = id.x;
+    let i = id.y * 65535u * 256u + id.x;
     if i >= p.len { return; }
 
     switch p.op {

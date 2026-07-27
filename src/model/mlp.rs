@@ -139,25 +139,33 @@ impl MLP {
         let s = Instant::now();
         let mut steps = 0;
 
-        let x_data: Vec<f32> = x.iter().flatten().copied().collect();
-        let x = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
-        let y = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
-
         loop {
             steps += 1;
 
+            // Load
+            let x_data: Vec<f32> = x.iter().flatten().copied().collect();
+            let x_tensor = self
+                .pool
+                .new_tensor(x_data, vec![x.len(), x[0].len()]);
+            let y_tensor = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
+
             // Forward pass
-            let y_pred = self.call(x);
+            let y_pred = self.call(x_tensor);
 
             // Compute loss
-            let loss = cross_entropy_loss(&mut self.pool, y_pred, y);
+            let loss = cross_entropy_loss(&mut self.pool, y_pred, y_tensor);
+            let l = self.pool.get_data(loss)[0];
 
             // Log
-            print!("{}\r", steps);
+            print!(
+                "{} {}\r",
+                steps,
+                l
+            );
             std::io::stdout().flush().unwrap();
 
             // End training if loss converges
-            if self.pool.get_data(loss)[0] < self.hyperparameters.loss_threshold {
+            if l < self.hyperparameters.loss_threshold {
                 print!("\r{:70}\r", "");
                 println!("{:.2?}", s.elapsed());
                 self.pool.flush();

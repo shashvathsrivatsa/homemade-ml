@@ -7,7 +7,7 @@ struct Params { rows: u32, cols: u32, unused: u32, sentinel: u32 };
 
 @compute @workgroup_size(256)
 fn sum(@builtin(global_invocation_id) id: vec3<u32>) {
-    let row = id.x;
+    let row = id.y * 65535u * 256u + id.x;
     if row >= p.rows { return; }
     var value = 0.0;
     for (var col = 0u; col < p.cols; col++) {
@@ -19,7 +19,7 @@ fn sum(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn sub_row_max(@builtin(global_invocation_id) id: vec3<u32>) {
-    let row = id.x;
+    let row = id.y * 65535u * 256u + id.x;
     if row >= p.rows { return; }
     var row_max = -3.402823e38;
     for (var col = 0u; col < p.cols; col++) {
@@ -33,25 +33,23 @@ fn sub_row_max(@builtin(global_invocation_id) id: vec3<u32>) {
 
 @compute @workgroup_size(256)
 fn mean_backward(@builtin(global_invocation_id) id: vec3<u32>) {
-    let i = id.x;
-    if i < p.rows {
-        out[i] = input[0] / f32(p.rows);
-        if p.sentinel == 4294967295u { out[i] = grad[0]; }
-    }
+    let i = id.y * 65535u * 256u + id.x;
+    if i >= p.rows { return; }
+    out[i] = input[0] / f32(p.rows);
+    if p.sentinel == 4294967295u { out[i] = grad[0]; }
 }
 
 @compute @workgroup_size(256)
 fn sum_backward(@builtin(global_invocation_id) id: vec3<u32>) {
-    let i = id.x;
-    if i < p.rows * p.cols {
-        out[i] = input[i / p.cols];
-        if p.sentinel == 4294967295u { out[i] = grad[0]; }
-    }
+    let i = id.y * 65535u * 256u + id.x;
+    if i >= p.rows * p.cols { return; }
+    out[i] = input[i / p.cols];
+    if p.sentinel == 4294967295u { out[i] = grad[0]; }
 }
 
 @compute @workgroup_size(256)
 fn sub_row_max_backward(@builtin(global_invocation_id) id: vec3<u32>) {
-    let row = id.x;
+    let row = id.y * 65535u * 256u + id.x;
     if row >= p.rows { return; }
 
     var row_max = -3.402823e38;

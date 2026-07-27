@@ -7,15 +7,14 @@ struct Params { rows: u32, cols: u32, unused: u32, sentinel: u32 };
 
 @compute @workgroup_size(256)
 fn bias_add(@builtin(global_invocation_id) id: vec3<u32>) {
-    let i = id.x;
-    if i < p.rows * p.cols {
-        out[i] = input[i] + bias[i % p.cols];
-    }
+    let i = id.y * 65535u * 256u + id.x;
+    if i >= p.rows * p.cols { return; }
+    out[i] = input[i] + bias[i % p.cols];
 }
 
 @compute @workgroup_size(256)
 fn bias_add_backward(@builtin(global_invocation_id) id: vec3<u32>) {
-    let col = id.x;
+    let col = id.y * 65535u * 256u + id.x;
     if col >= p.cols { return; }
     var value = 0.0;
     for (var row = 0u; row < p.rows; row++) {

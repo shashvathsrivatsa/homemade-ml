@@ -9,7 +9,7 @@ struct Params { len: u32, op: u32, unused_0: u32, unused_1: u32 };
 // 6 log_backward, 7 neg_backward, 8 tanh_backward, 9 copy, 10 scalar broadcast
 @compute @workgroup_size(256)
 fn unary(@builtin(global_invocation_id) id: vec3<u32>) {
-    let i = id.x;
+    let i = id.y * 65535u * 256u + id.x;
     if i >= p.len { return; }
 
     switch p.op {
