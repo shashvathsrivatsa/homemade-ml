@@ -29,40 +29,56 @@ impl Gpu {
             .request_device(&wgpu::DeviceDescriptor::default(), None)
             .await
             .expect("failed to create wgpu device");
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("tensor ops"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("../shaders/ops.wgsl").into()),
-        });
-        let entries = [
-            "matmul",
-            "unary",
-            "binary",
-            "bias_add",
-            "div",
-            "sum",
-            "sub_row_max",
-            "gather",
-            "bias_add_backward",
-            "gather_backward",
-            "mean_backward",
-            "div_backward_a",
-            "div_backward_b",
-            "sum_backward",
-            "sub_row_max_backward",
-            "update",
+        let shader_sources = [
+            ("matmul", include_str!("../shaders/matmul.wgsl")),
+            ("elementwise", include_str!("../shaders/elementwise.wgsl")),
+            ("binary", include_str!("../shaders/binary.wgsl")),
+            ("reduce", include_str!("../shaders/reduce.wgsl")),
+            ("gather", include_str!("../shaders/gather.wgsl")),
+            ("bias", include_str!("../shaders/bias.wgsl")),
+            ("div", include_str!("../shaders/div.wgsl")),
+            ("optim", include_str!("../shaders/optim.wgsl")),
         ];
-        let pipelines = entries
+        let shaders: std::collections::HashMap<_, _> = shader_sources
             .into_iter()
-            .map(|entry| {
+            .map(|(name, source)| {
+                let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+                    label: Some(name),
+                    source: wgpu::ShaderSource::Wgsl(source.into()),
+                });
+                (name, shader)
+            })
+            .collect();
+        let pipeline_entries = [
+            ("matmul", "matmul", "matmul"),
+            ("unary", "elementwise", "unary"),
+            ("binary", "binary", "binary"),
+            ("sum", "reduce", "sum"),
+            ("sub_row_max", "reduce", "sub_row_max"),
+            ("mean_backward", "reduce", "mean_backward"),
+            ("sum_backward", "reduce", "sum_backward"),
+            ("sub_row_max_backward", "reduce", "sub_row_max_backward"),
+            ("gather", "gather", "gather"),
+            ("gather_backward", "gather", "gather_backward"),
+            ("bias_add", "bias", "bias_add"),
+            ("bias_add_backward", "bias", "bias_add_backward"),
+            ("div", "div", "div"),
+            ("div_backward_a", "div", "div_backward_a"),
+            ("div_backward_b", "div", "div_backward_b"),
+            ("update", "optim", "update"),
+        ];
+        let pipelines = pipeline_entries
+            .into_iter()
+            .map(|(pipeline_name, shader_name, entry_point)| {
                 let pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                    label: Some(entry),
+                    label: Some(pipeline_name),
                     layout: None,
-                    module: &shader,
-                    entry_point: entry,
+                    module: &shaders[shader_name],
+                    entry_point,
                     compilation_options: Default::default(),
                     cache: None,
                 });
-                (entry, pipeline)
+                (pipeline_name, pipeline)
             })
             .collect();
         let one = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
