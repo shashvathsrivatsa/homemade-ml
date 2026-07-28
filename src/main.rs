@@ -5,11 +5,19 @@ use homemade_ml::*;
 fn main() {
     let hyperparameters = Hyperparameters {
         lr: 0.05,
-        loss_threshold: 0.05,
+        loss_threshold: 0.01,
         batch_size: 20000,
         epochs: 10,
     };
-    let mut mlp = MLP::new(784, vec![128, 64, 10], Relu, Softmax, AdamOptimizer, hyperparameters);
+
+    let mut mlp = MLP::new(
+        784,
+        vec![128, 64, 10],
+        Relu,
+        Softmax,
+        AdamOptimizer,
+        hyperparameters,
+    );
 
     train(&mut mlp);
 }

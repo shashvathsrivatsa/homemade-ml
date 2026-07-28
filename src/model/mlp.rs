@@ -56,7 +56,7 @@ impl MLP {
 
         let optimizer_data = match optimizer {
             SGD => OptimizerData::SGD(SGD::new(hyperparameters.lr)),
-            Adam => {
+            AdamOptimizer => {
                 let opts = layers.iter().flat_map(|l| [
                     AdamOptimizer::new(hyperparameters.lr, &pool.gpu, pool.nodes[l.w.0].len),
                     AdamOptimizer::new(hyperparameters.lr, &pool.gpu, pool.nodes[l.b.0].len),
