@@ -14,10 +14,11 @@ impl Layer {
         Self { w, b }
     }
 
-    fn call(&self, pool: &mut Pool, x: Tensor, activation: &Activation) -> Tensor {
+    fn call(&self, pool: &mut Pool, x: Tensor, activation: &Activation, dropout_rate: f32) -> Tensor {
         let c = pool.matmul(x, self.w);
         let z = pool.bias_add(c, self.b);
-        activation.apply(pool, z)
+        let y = activation.apply(pool, z);
+        pool.dropout(y, dropout_rate)
     }
 
     fn parameters(&self) -> Vec<Tensor> {
@@ -78,12 +79,13 @@ impl MLP {
     // —— Propogate ————————————————————————————————————————————————————————————————————————
     fn call(&mut self, x: Tensor) -> Tensor {
         self.layers.iter().enumerate().fold(x, |acc, (i, layer)| {
-            let activation = if i == self.layers.len() - 1 {
-                &self.output_activation
+            let (activation, dropout_rate) = if i == self.layers.len() - 1 {
+                (&self.output_activation, 0.0)
             } else {
-                &self.hidden_activation
+                (&self.hidden_activation, self.hyperparameters.dropout_rate)
             };
-            layer.call(&mut self.pool, acc, activation)
+
+            layer.call(&mut self.pool, acc, activation, dropout_rate)
         })
     }
 
@@ -193,15 +195,25 @@ impl MLP {
 
             // Flush
             self.pool.flush();
+
+            // Save intermittently
+            if steps % 100 == 0 {
+                self.save(true);
+            }
         }
     }
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————
     pub fn eval(&mut self, x: &[f32]) -> Vec<f32> {
+        let old_dropout_rate = self.hyperparameters.dropout_rate;
+        self.hyperparameters.dropout_rate = 0.0;
         let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);
         let y = self.call(x);
+
         let result: Vec<f32> = self.pool.get_data(y).to_owned();
+
         self.pool.flush();
+        self.hyperparameters.dropout_rate = old_dropout_rate;
         result
     }
 
@@ -234,7 +246,7 @@ impl MLP {
     }
 
     // —— Store ————————————————————————————————————————————————————————————————————————————
-    pub fn save(&mut self) {
+    pub fn save(&mut self, silent: bool) {
         let parameters = self.parameters();
         let weights: Vec<f32> = parameters
             .iter()
@@ -246,7 +258,9 @@ impl MLP {
             .collect::<Vec<_>>()
             .join("\n");
         fs::write("model.txt", txt).unwrap();
-        println!("Saved model weights");
+        if !silent {
+            println!("Saved model weights");
+        }
     }
 
     pub fn load(&mut self) {

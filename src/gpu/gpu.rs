@@ -74,6 +74,7 @@ impl Gpu {
             ("div", include_str!("../../shaders/div.wgsl")),
             ("optim", include_str!("../../shaders/optim.wgsl")),
             ("adam", include_str!("../../shaders/adam.wgsl")),
+            ("dropout", include_str!("../../shaders/dropout.wgsl")),
         ];
         let shaders: std::collections::HashMap<_, _> = shader_sources
             .into_iter()
@@ -103,6 +104,7 @@ impl Gpu {
             ("div_backward_b", "div", "div_backward_b"),
             ("update", "optim", "update"),
             ("adam", "adam", "adam"),
+            ("dropout", "dropout", "dropout"),
         ];
         let pipelines = pipeline_entries
             .into_iter()

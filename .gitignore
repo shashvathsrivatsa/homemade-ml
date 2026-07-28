@@ -2,11 +2,14 @@
 data
 
 # compiled
-/target
+target
 
 # bs
 **/*.DS_Store
-• 
-# images
-plot.png
+
+# outputs
 **/*.svg
+plot.png
+loss.png
+loss.txt
+model.txt

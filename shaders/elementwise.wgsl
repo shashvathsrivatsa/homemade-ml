@@ -23,6 +23,7 @@ fn unary(@builtin(global_invocation_id) id: vec3<u32>) {
         case 7u: { out[i] = -input[i]; }
         case 8u: { out[i] = (1.0 - input[i] * input[i]) * grad[i]; }
         case 10u: { out[i] = input[0]; }
+        case 11u: { out[i] = select(0.0, grad[i], input[i] != 0.0); }
         default: { out[i] = input[i]; }
     }
 }

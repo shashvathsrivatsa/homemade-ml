@@ -8,6 +8,7 @@ fn main() {
         loss_threshold: 0.01,
         batch_size: 20000,
         epochs: 10,
+        dropout_rate: 0.2,
     };
 
     let mut mlp = MLP::new(
@@ -19,7 +20,7 @@ fn main() {
         hyperparameters,
     );
 
-    train(&mut mlp);
+    test(&mut mlp);
 }
 
 #[allow(dead_code)]
@@ -30,7 +31,7 @@ fn train(mlp: &mut MLP) {
     println!("Training...");
     mlp.train_full(&xs, &ys);
 
-    mlp.save();
+    mlp.save(false);
 }
 
 #[allow(dead_code)]
