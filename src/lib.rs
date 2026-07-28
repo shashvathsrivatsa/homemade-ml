@@ -13,13 +13,15 @@ pub use gpu::*;
 pub use std::fs;
 pub use std::io::{ Write, Stdout, stdout };
 pub use std::time::{ Instant, Duration };
+pub use std::error::Error;
+pub use std::path::Path;
 
 pub use image::ImageReader;
 pub use rand::{Rng, seq::SliceRandom, thread_rng};
 pub use wgpu::util::DeviceExt;
 
 
-// TUI
+// Plotting
 pub use crossterm::{
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
@@ -33,4 +35,7 @@ pub use ratatui::{
     symbols,
     text::Line,
     widgets::{Axis, Chart, Dataset, GraphType, Paragraph},
+};
+use plotters::prelude::{
+    BitMapBackend, CYAN, ChartBuilder, IntoDrawingArea, IntoFont, LineSeries, RGBColor, WHITE,
 };

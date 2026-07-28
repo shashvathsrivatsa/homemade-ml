@@ -182,7 +182,11 @@ impl MLP {
             self.pool.flush();
         }
 
+        loss_graph
+            .save_png("loss.png")
+            .expect("failed to save loss graph");
         drop(loss_graph);
+        println!("Saved loss graph to loss.png");
         println!("{:.2?}", s.elapsed());
     }
 

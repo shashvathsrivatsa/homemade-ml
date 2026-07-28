@@ -7,6 +7,7 @@ const LOSS_HISTORY_SIZE: usize = 200;
 pub struct LossGraph {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     points: Vec<(f64, f64)>,
+    all_points: Vec<(f64, f64)>,
 }
 
 impl LossGraph {
@@ -30,12 +31,15 @@ impl LossGraph {
         Ok(Self {
             terminal,
             points: Vec::with_capacity(LOSS_HISTORY_SIZE),
+            all_points: Vec::new(),
         })
     }
 
     pub fn draw(&mut self, step: usize, loss: f32) -> std::io::Result<()> {
         if loss.is_finite() {
-            self.points.push((step as f64, loss as f64));
+            let point = (step as f64, loss as f64);
+            self.points.push(point);
+            self.all_points.push(point);
             if self.points.len() > LOSS_HISTORY_SIZE {
                 self.points.remove(0);
             }
@@ -79,24 +83,14 @@ impl LossGraph {
             ];
 
             let chart = Chart::new(datasets)
-                .x_axis(
-                    Axis::default()
-                        .title("Step")
-                        .bounds([x_min, x_max])
-                        .labels([
-                            Line::from(format!("{x_min:.0}")),
-                            Line::from(format!("{x_max:.0}")),
-                        ]),
-                )
-                .y_axis(
-                    Axis::default()
-                        .title("Loss")
-                        .bounds([y_min, y_max])
-                        .labels([
-                            Line::from(format!("{y_min:.4}")),
-                            Line::from(format!("{y_max:.4}")),
-                        ]),
-                );
+                .x_axis(Axis::default().bounds([x_min, x_max]).labels([
+                    Line::from(format!("{x_min:.0}")),
+                    Line::from(format!("{x_max:.0}")),
+                ]))
+                .y_axis(Axis::default().bounds([y_min, y_max]).labels([
+                    Line::from(format!("{y_min:.4}")),
+                    Line::from(format!("{y_max:.4}")),
+                ]));
 
             let status = Paragraph::new(format!("Step: {step}  Loss: {loss:.6}"));
 
@@ -118,6 +112,52 @@ impl LossGraph {
         }
 
         Ok(false)
+    }
+
+    pub fn save_png(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
+        if self.all_points.is_empty() {
+            return Ok(());
+        }
+
+        let x_min = self.all_points.first().unwrap().0;
+        let x_max = self.all_points.last().unwrap().0.max(x_min + 1.0);
+        let (mut y_min, mut y_max) = self
+            .all_points
+            .iter()
+            .map(|point| point.1)
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), value| {
+                (min.min(value), max.max(value))
+            });
+
+        if (y_max - y_min).abs() < f64::EPSILON {
+            let padding = (y_max.abs() * 0.05).max(0.001);
+            y_min -= padding;
+            y_max += padding;
+        } else {
+            let padding = (y_max - y_min) * 0.05;
+            y_min -= padding;
+            y_max += padding;
+        }
+
+        let root = BitMapBackend::new(path.as_ref(), (1200, 700)).into_drawing_area();
+        root.fill(&RGBColor(10, 14, 20))?;
+
+        let mut chart = ChartBuilder::on(&root)
+            .margin(30)
+            .x_label_area_size(50)
+            .y_label_area_size(80)
+            .build_cartesian_2d(x_min..x_max, y_min..y_max)?;
+
+        chart
+            .configure_mesh()
+            .axis_style(WHITE)
+            .label_style(("sans-serif", 20).into_font().color(&WHITE))
+            .draw()?;
+
+        chart.draw_series(LineSeries::new(self.all_points.iter().copied(), &CYAN))?;
+        root.present()?;
+
+        Ok(())
     }
 }
 
