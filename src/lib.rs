@@ -30,7 +30,7 @@ pub use crossterm::{
 pub use ratatui::{
     Terminal,
     backend::CrosstermBackend,
-    layout::{Constraint, Direction, Layout},
+    layout::{Alignment, Constraint, Direction, Layout},
     style::{Color, Style},
     symbols,
     text::Line,

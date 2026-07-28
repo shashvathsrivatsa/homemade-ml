@@ -38,7 +38,7 @@ impl LossGraph {
 
         let x_min = self.points.first().map_or(step as f64, |point| point.0);
         let x_max = (step as f64).max(x_min + 1.0);
-        let (mut y_min, mut y_max) = if self.points.is_empty() {
+        let (y_min, y_max) = if self.points.is_empty() {
             (0.0, 1.0)
         } else {
             self.points
@@ -48,16 +48,6 @@ impl LossGraph {
                     (min.min(value), max.max(value))
                 })
         };
-
-        if (y_max - y_min).abs() < f64::EPSILON {
-            let padding = (y_max.abs() * 0.05).max(0.001);
-            y_min -= padding;
-            y_max += padding;
-        } else {
-            let padding = (y_max - y_min) * 0.05;
-            y_min -= padding;
-            y_max += padding;
-        }
 
         self.terminal.draw(|frame| {
             let areas = Layout::default()
@@ -83,7 +73,7 @@ impl LossGraph {
                     Line::from(format!("{y_max:.4}")),
                 ]));
 
-            let status = Paragraph::new(format!("Step: {step}  Loss: {loss:.6}"));
+            let status = Paragraph::new(format!("Loss: {loss:.6}")).alignment(Alignment::Center);
 
             frame.render_widget(chart, areas[0]);
             frame.render_widget(status, areas[1]);
@@ -97,7 +87,10 @@ impl LossGraph {
             if let Event::Key(key) = event::read()?
                 && key.kind == KeyEventKind::Press
                 && (key.code == KeyCode::Char('q')
-                    || key.code == KeyCode::Char('c') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
+                    || key.code == KeyCode::Char('c')
+                        && key
+                            .modifiers
+                            .contains(crossterm::event::KeyModifiers::CONTROL))
             {
                 return Ok(true);
             }
@@ -113,23 +106,13 @@ impl LossGraph {
 
         let x_min = self.points.first().unwrap().0;
         let x_max = self.points.last().unwrap().0.max(x_min + 1.0);
-        let (mut y_min, mut y_max) = self
+        let (y_min, y_max) = self
             .points
             .iter()
             .map(|point| point.1)
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), value| {
                 (min.min(value), max.max(value))
             });
-
-        if (y_max - y_min).abs() < f64::EPSILON {
-            let padding = (y_max.abs() * 0.05).max(0.001);
-            y_min -= padding;
-            y_max += padding;
-        } else {
-            let padding = (y_max - y_min) * 0.05;
-            y_min -= padding;
-            y_max += padding;
-        }
 
         let root = BitMapBackend::new(path.as_ref(), (1200, 700)).into_drawing_area();
         root.fill(&RGBColor(10, 14, 20))?;
@@ -142,6 +125,7 @@ impl LossGraph {
 
         chart
             .configure_mesh()
+            .y_labels(2)
             .axis_style(WHITE)
             .label_style(("sans-serif", 20).into_font().color(&WHITE))
             .draw()?;
