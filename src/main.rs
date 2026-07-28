@@ -5,7 +5,7 @@ use homemade_ml::*;
 fn main() {
     let hyperparameters = Hyperparameters {
         learning_rate: 0.05,
-        loss_threshold: 1.5,
+        loss_threshold: 0.05,
         batch_size: 20000,
         epochs: 10,
     };

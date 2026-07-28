@@ -162,11 +162,14 @@ impl MLP {
 
             // End training if loss converges or the user quits
             if l < self.hyperparameters.loss_threshold
-                || loss_graph
-                    .should_quit()
-                    .expect("failed to read terminal input")
+                || loss_graph.should_quit().expect("failed to read terminal input")
             {
                 self.pool.flush();
+                let save_result = loss_graph.save_png("loss.png");
+                drop(loss_graph);
+                save_result.expect("failed to save loss graph");
+                println!("Saved loss graph to loss.png");
+                println!("{:.2?}", s.elapsed());
                 break;
             }
 
@@ -181,13 +184,6 @@ impl MLP {
             // Flush
             self.pool.flush();
         }
-
-        loss_graph
-            .save_png("loss.png")
-            .expect("failed to save loss graph");
-        drop(loss_graph);
-        println!("Saved loss graph to loss.png");
-        println!("{:.2?}", s.elapsed());
     }
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————

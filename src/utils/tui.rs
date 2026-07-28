@@ -105,7 +105,8 @@ impl LossGraph {
         while event::poll(Duration::ZERO)? {
             if let Event::Key(key) = event::read()?
                 && key.kind == KeyEventKind::Press
-                && key.code == KeyCode::Char('q')
+                && (key.code == KeyCode::Char('q')
+                    || key.code == KeyCode::Char('c') && key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL))
             {
                 return Ok(true);
             }
