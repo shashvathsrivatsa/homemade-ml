@@ -12,3 +12,6 @@ pub use loss::*;
 
 pub mod activation;
 pub use activation::*;
+
+pub mod optimizers;
+pub use optimizers::*;

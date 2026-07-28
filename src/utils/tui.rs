@@ -2,12 +2,9 @@ use crate::*;
 
 // ——— TUI ————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-const LOSS_HISTORY_SIZE: usize = 200;
-
 pub struct LossGraph {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     points: Vec<(f64, f64)>,
-    all_points: Vec<(f64, f64)>,
 }
 
 impl LossGraph {
@@ -30,19 +27,13 @@ impl LossGraph {
 
         Ok(Self {
             terminal,
-            points: Vec::with_capacity(LOSS_HISTORY_SIZE),
-            all_points: Vec::new(),
+            points: Vec::new(),
         })
     }
 
     pub fn draw(&mut self, step: usize, loss: f32) -> std::io::Result<()> {
         if loss.is_finite() {
-            let point = (step as f64, loss as f64);
-            self.points.push(point);
-            self.all_points.push(point);
-            if self.points.len() > LOSS_HISTORY_SIZE {
-                self.points.remove(0);
-            }
+            self.points.push((step as f64, loss as f64));
         }
 
         let x_min = self.points.first().map_or(step as f64, |point| point.0);
@@ -116,14 +107,14 @@ impl LossGraph {
     }
 
     pub fn save_png(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
-        if self.all_points.is_empty() {
+        if self.points.is_empty() {
             return Ok(());
         }
 
-        let x_min = self.all_points.first().unwrap().0;
-        let x_max = self.all_points.last().unwrap().0.max(x_min + 1.0);
+        let x_min = self.points.first().unwrap().0;
+        let x_max = self.points.last().unwrap().0.max(x_min + 1.0);
         let (mut y_min, mut y_max) = self
-            .all_points
+            .points
             .iter()
             .map(|point| point.1)
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), value| {
@@ -155,7 +146,7 @@ impl LossGraph {
             .label_style(("sans-serif", 20).into_font().color(&WHITE))
             .draw()?;
 
-        chart.draw_series(LineSeries::new(self.all_points.iter().copied(), &CYAN))?;
+        chart.draw_series(LineSeries::new(self.points.iter().copied(), &CYAN))?;
         root.present()?;
 
         Ok(())
