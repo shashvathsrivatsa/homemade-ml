@@ -20,7 +20,7 @@ fn main() {
         hyperparameters,
     );
 
-    train(&mut mlp);
+    test(&mut mlp);
 }
 
 #[allow(dead_code)]
