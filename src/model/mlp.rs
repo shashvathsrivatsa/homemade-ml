@@ -138,15 +138,14 @@ impl MLP {
     pub fn train_full(&mut self, x: &[Vec<f32>], y: &[f32]) {
         let s = Instant::now();
         let mut steps = 0;
+        let mut loss_graph = LossGraph::new().expect("failed to initialize loss graph");
 
         loop {
             steps += 1;
 
             // Load
             let x_data: Vec<f32> = x.iter().flatten().copied().collect();
-            let x_tensor = self
-                .pool
-                .new_tensor(x_data, vec![x.len(), x[0].len()]);
+            let x_tensor = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
             let y_tensor = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
 
             // Forward pass
@@ -157,17 +156,16 @@ impl MLP {
             let l = self.pool.get_data(loss)[0];
 
             // Log
-            print!(
-                "{} {}\r",
-                steps,
-                l
-            );
-            std::io::stdout().flush().unwrap();
+            loss_graph
+                .draw(steps, l)
+                .expect("failed to draw loss graph");
 
-            // End training if loss converges
-            if l < self.hyperparameters.loss_threshold {
-                print!("\r{:70}\r", "");
-                println!("{:.2?}", s.elapsed());
+            // End training if loss converges or the user quits
+            if l < self.hyperparameters.loss_threshold
+                || loss_graph
+                    .should_quit()
+                    .expect("failed to read terminal input")
+            {
                 self.pool.flush();
                 break;
             }
@@ -183,6 +181,9 @@ impl MLP {
             // Flush
             self.pool.flush();
         }
+
+        drop(loss_graph);
+        println!("{:.2?}", s.elapsed());
     }
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————

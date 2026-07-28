@@ -6,6 +6,11 @@ edition = "2024"
 [dependencies]
 rand = "0.8"
 image = "0.25.10"
+
+# GPU
 wgpu = "22"
 bytemuck = { version = "1", features = ["derive"] }
 
+# TUI
+ratatui = "0.29"
+crossterm = "0.28"
