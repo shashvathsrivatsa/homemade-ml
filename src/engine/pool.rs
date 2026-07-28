@@ -108,17 +108,20 @@ impl Pool {
     }
 
     // —— Update ———————————————————————————————————————————————————————————————————————————
-    pub fn update(&mut self, t: Tensor, learning_rate: f32) {
-        let node = &self.nodes[t.0];
-        let out = self.gpu.empty_buffer(node.len);
-        self.gpu.dispatch(
-            "update",
-            &[&node.data, &node.grad],
-            &[&out],
-            [node.len as u32, learning_rate.to_bits(), 0, 0],
-            Self::groups_1d(node.len),
-        );
-        self.nodes[t.0].data = out;
+    pub fn update_weights(&mut self, opt: &mut OptimizerData) {
+        for i in 0..self.param_end {
+            match opt {
+                OptimizerData::SGD(sgd) => {
+                    let node = &mut self.nodes[i];
+                    sgd.step(&self.gpu, node);
+                }
+                OptimizerData::Adam(opts) => {
+                    let node = &mut self.nodes[i];
+                    let adam = &mut opts[i];
+                    adam.step(&self.gpu, node);
+                }
+            }
+        }
     }
 
     // —— Backpropogate ————————————————————————————————————————————————————————————————————

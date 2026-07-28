@@ -33,6 +33,7 @@ pub struct MLP {
     hyperparameters: Hyperparameters,
     hidden_activation: Activation,
     output_activation: Activation,
+    optimizer_data: OptimizerData,
 }
 
 impl MLP {
@@ -41,16 +42,28 @@ impl MLP {
         n_outputs: Vec<usize>,
         hidden_activation: Activation,
         output_activation: Activation,
+        optimizer: Optimizer,
         hyperparameters: Hyperparameters,
     ) -> Self {
         let mut pool = Pool::new();
         let prev = |y: usize| if y == 0 { n_inputs } else { n_outputs[y - 1] };
 
-        let layers = (0..n_outputs.len())
+        let layers: Vec<Layer> = (0..n_outputs.len())
             .map(|n_outputs_i| Layer::new(&mut pool, prev(n_outputs_i), n_outputs[n_outputs_i]))
             .collect();
 
         pool.set_param_end();
+
+        let optimizer_data = match optimizer {
+            SGD => OptimizerData::SGD(SGD::new(hyperparameters.lr)),
+            Adam => {
+                let opts = layers.iter().flat_map(|l| [
+                    AdamOptimizer::new(hyperparameters.lr, &pool.gpu, pool.nodes[l.w.0].len),
+                    AdamOptimizer::new(hyperparameters.lr, &pool.gpu, pool.nodes[l.b.0].len),
+                ]).collect();
+                OptimizerData::Adam(opts)
+            }
+        };
 
         Self {
             layers,
@@ -58,6 +71,7 @@ impl MLP {
             hyperparameters,
             hidden_activation,
             output_activation,
+            optimizer_data,
         }
     }
 
@@ -122,9 +136,7 @@ impl MLP {
                 self.pool.backpropogate(loss);
 
                 // Update weights
-                self.parameters().iter().for_each(|&p| {
-                    self.pool.update(p, self.hyperparameters.learning_rate);
-                });
+                self.pool.update_weights(&mut self.optimizer_data);
 
                 // Flush
                 self.pool.flush();
@@ -177,9 +189,7 @@ impl MLP {
             self.pool.backpropogate(loss);
 
             // Update weights
-            self.parameters().iter().for_each(|&p| {
-                self.pool.update(p, self.hyperparameters.learning_rate);
-            });
+            self.pool.update_weights(&mut self.optimizer_data);
 
             // Flush
             self.pool.flush();

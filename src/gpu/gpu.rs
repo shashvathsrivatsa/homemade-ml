@@ -73,6 +73,7 @@ impl Gpu {
             ("bias", include_str!("../../shaders/bias.wgsl")),
             ("div", include_str!("../../shaders/div.wgsl")),
             ("optim", include_str!("../../shaders/optim.wgsl")),
+            ("adam", include_str!("../../shaders/adam.wgsl")),
         ];
         let shaders: std::collections::HashMap<_, _> = shader_sources
             .into_iter()
@@ -101,6 +102,7 @@ impl Gpu {
             ("div_backward_a", "div", "div_backward_a"),
             ("div_backward_b", "div", "div_backward_b"),
             ("update", "optim", "update"),
+            ("adam", "adam", "adam"),
         ];
         let pipelines = pipeline_entries
             .into_iter()
@@ -134,6 +136,17 @@ impl Gpu {
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("tensor"),
                 contents: bytemuck::cast_slice(data),
+                usage: wgpu::BufferUsages::STORAGE
+                    | wgpu::BufferUsages::COPY_SRC
+                    | wgpu::BufferUsages::COPY_DST,
+            })
+    }
+
+    pub fn zero_buffer(&self, len: usize) -> wgpu::Buffer {
+        self.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("tensor"),
+                contents: bytemuck::cast_slice(&vec![0.0_f32; len.max(1)]),
                 usage: wgpu::BufferUsages::STORAGE
                     | wgpu::BufferUsages::COPY_SRC
                     | wgpu::BufferUsages::COPY_DST,
