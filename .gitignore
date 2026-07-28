@@ -9,7 +9,5 @@ target
 
 # outputs
 **/*.svg
-plot.png
-loss.png
-loss.txt
-model.txt
+**/*.png
+**/*.txt
