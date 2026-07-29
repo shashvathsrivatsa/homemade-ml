@@ -11,6 +11,8 @@ pub fn load_bw_png(path: String) -> Vec<f32> {
 }
 
 pub fn load_data(data_type: DataType) -> (Vec<Vec<f32>>, Vec<f32>) {
+    println!("Loading data...");
+
     let mut xs: Vec<Vec<f32>> = vec![];
     let mut ys: Vec<f32> = vec![];
 

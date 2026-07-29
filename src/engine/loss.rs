@@ -2,6 +2,21 @@ use crate::*;
 
 // ——— Loss ———————————————————————————————————————————————————————————————————————————————————————————————————————————
 
+pub enum LossFunction {
+    CrossEntropyLoss,
+}
+
+pub use LossFunction::*;
+
+impl LossFunction {
+    pub fn apply(&self, pool: &mut Pool, y_pred: Tensor, labels: Tensor) -> Tensor {
+        match self {
+            CrossEntropyLoss => cross_entropy_loss(pool, y_pred, labels),
+        }
+    }
+}
+
+
 // pub fn mse_loss(pool: &mut Pool, ys: &[Value], y_pred: &[Value]) -> Value {
 //     ys.iter().zip(y_pred.iter()).fold(pool.new_value(0.0), |acc, (&ygt, &yout)| {
 //         let diff = pool.sub(ygt, yout);
