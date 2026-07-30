@@ -18,7 +18,9 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
     }
 
     // Episode loop
+    let mut step = 0;
     loop {
+        step += 1;
 
         // Pick action (initially random, eventually purely best)
         let explore = decay.explore();
@@ -43,7 +45,7 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
 
             let next_q = slow_model.eval(&exp.next_state);
             let max_next_q = next_q.iter().cloned().reduce(f32::max).unwrap_or(0.0);
-            let mut y_i = slow_model.eval(&exp.state);
+            let mut y_i = fast_model.eval(&exp.state);
 
             y_i[exp.action as usize] = if exp.done {
                 exp.reward
@@ -56,6 +58,9 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
 
         // Train model on batch
         fast_model.train(xs.as_slice(), ys.as_slice());
+
+        // Periodically sync networks
+        if step % 1000 == 0 { fast_model.copy_weights_to(&mut slow_model); }
     }
 }
 

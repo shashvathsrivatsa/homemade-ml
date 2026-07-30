@@ -16,7 +16,7 @@ impl Pool {
     // —— Constructors —————————————————————————————————————————————————————————————————————
     pub fn new() -> Self {
         Self {
-           nodes: vec![],
+            nodes: vec![],
             param_end: 0,
             gpu: Gpu::new(),
         }

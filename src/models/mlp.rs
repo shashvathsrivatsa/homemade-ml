@@ -285,4 +285,14 @@ impl<'wsg> MLP<'wsg> {
         }
         println!("Loaded model weights");
     }
+
+    // this moves data from gpu buffer -> cpu -> new gpu buffer
+    // for bigger dqn projects, make this copy the gpu buffers on the same pool
+    // have one pool, initialize two sets of parameters, then flush all compute after that
+    pub fn copy_weights_to(&self, other: &mut MLP) {
+        for (src, dst) in self.layers.iter().zip(other.layers.iter()) {
+            other.pool.set_data(dst.w, self.pool.get_data(src.w));
+            other.pool.set_data(dst.b, self.pool.get_data(src.b));
+        }
+    }
 }
