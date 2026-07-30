@@ -40,8 +40,8 @@ impl Gpu {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             #[cfg(target_os = "linux")]
             backends: wgpu::Backends::VULKAN,
-            #[cfg(not(target_os = "linux"))]
-            backends: wgpu::Backends::PRIMARY,
+            // #[cfg(not(target_os = "linux"))]
+            // backends: wgpu::Backends::PRIMARY,
             ..Default::default()
         });
         let adapter = instance

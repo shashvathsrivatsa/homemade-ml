@@ -31,13 +31,13 @@ impl Layer {
 pub struct MLP {
     pool: Pool,
     layers: Vec<Layer>,
-    hyperparameters: Hyperparameters,
+    hyperparameters: MlpHyperparameters,
     optimizer_data: OptimizerData,
 }
 
 impl MLP {
     pub fn new(
-        hyperparameters: Hyperparameters,
+        hyperparameters: MlpHyperparameters,
     ) -> Self {
         let mut pool = Pool::new();
         let prev = |y: usize| if y == 0 { hyperparameters.n_inputs } else { hyperparameters.n_layers[y - 1] };

@@ -2,41 +2,21 @@ use crate::*;
 
 // ——— DQN ————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-pub fn dqn() {
-    let hyperparameters = Hyperparameters {
-        lr: 0.05,
-        training_mode: TrainingMode::OnePass,
-        dropout_rate: 0.0,
-        n_inputs: 4,
-        n_layers: vec![64, 2],
-        hidden_activation: Relu,
-        output_activation: NoActivation,
-        loss_function: MSE,
-        optimizer: AdamOptimizer,
-    };
-
-    let memory_capacity = 10_000;
-    let min_experiences = 1_000;
-    let total_steps = 10_000;
-    let min_eps = 0.01;
-    let batch_size = 32;
-    let gamma = 0.95;
-
+pub fn dqn(hyperparameters: DqnHyperparameters) {
+    let mut model = MLP::new(hyperparameters.model_hyperparameters);
+    let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
     let mut graph = EpisodeGraph::new().unwrap();
 
     // Warmup (populate memory)
     let mut state = State::new();
-    let mut memory = Memory::new(memory_capacity, batch_size);
+    let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
 
-    for _ in 0..min_experiences {
+    for _ in 0..hyperparameters.min_experiences {
         let action = random::<usize>() % 2;
         state.step(action, &mut memory, &mut graph);
     }
 
     // Episode loop
-    let mut model = MLP::new(hyperparameters);
-    let mut decay = LinearDecay::new(total_steps, min_eps);
-
     loop {
 
         // Pick action (initially random, eventually purely best)
@@ -67,7 +47,7 @@ pub fn dqn() {
             y_i[exp.action as usize] = if exp.done {
                 exp.reward
             } else {
-                exp.reward + gamma * max_next_q
+                exp.reward + hyperparameters.gamma * max_next_q
             };
 
             (xs_i, y_i)
