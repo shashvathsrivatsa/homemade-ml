@@ -6,6 +6,7 @@ pub enum Activation {
     Tanh,
     Relu,
     Softmax,
+    NoActivation,
 }
 
 pub use Activation::*;
@@ -16,6 +17,7 @@ impl Activation {
             Tanh => pool.tanh(logits),
             Relu => relu(pool, logits),
             Softmax => softmax(pool, logits),
+            NoActivation => logits,
         }
     }
 }

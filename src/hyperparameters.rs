@@ -21,6 +21,7 @@ pub enum TrainingMode {
     Batch {
         batch_size: usize,
         epochs: usize,
-    }
+    },
+    OnePass
 }
 

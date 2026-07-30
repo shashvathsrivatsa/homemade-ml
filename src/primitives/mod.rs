@@ -7,3 +7,6 @@ pub use loss::*;
 pub mod optimizer;
 pub use optimizer::*;
 
+pub mod decay;
+pub use decay::*;
+

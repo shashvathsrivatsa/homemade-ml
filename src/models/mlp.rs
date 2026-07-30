@@ -93,17 +93,11 @@ impl MLP {
         match self.hyperparameters.training_mode {
             TrainingMode::Full { loss_threshold } => self.train_full(x, y, loss_threshold),
             TrainingMode::Batch { batch_size, epochs } => self.train_batch(x, y, batch_size, epochs),
+            TrainingMode::OnePass => self.train_once(x, y),
         }
     }
 
-    fn train_full(&mut self, x: &[Vec<f32>], y: &[f32], loss_threshold: f32) {
-        let s = Instant::now();
-        let mut steps = 0;
-        let mut loss_graph = LossGraph::new().expect("failed to initialize loss graph");
-
-        loop {
-            steps += 1;
-
+    fn train_once(&mut self, x: &[Vec<f32>], y: &[f32]) {
             // Load
             let x_data: Vec<f32> = x.iter().flatten().copied().collect();
             let x_tensor = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
@@ -113,7 +107,37 @@ impl MLP {
             let y_pred = self.call(x_tensor);
 
             // Compute loss
-            let loss = cross_entropy_loss(&mut self.pool, y_pred, y_tensor);
+            let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_tensor);
+            let l = self.pool.get_data(loss)[0];
+
+            // Backprop
+            self.pool.backpropogate(loss);
+
+            // Update weights
+            self.pool.update_weights(&mut self.optimizer_data);
+
+            // Flush
+            self.pool.flush();
+    }
+
+    fn train_full(&mut self, x: &[Vec<f32>], y: &[f32], loss_threshold: f32) {
+        let s = Instant::now();
+        let mut steps = 0;
+        let mut loss_graph = LossGraph::new().expect("failed to initialize loss graph");
+
+        // Load
+        let x_data: Vec<f32> = x.iter().flatten().copied().collect();
+        let x_tensor = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
+        let y_tensor = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
+
+        loop {
+            steps += 1;
+
+            // Forward pass
+            let y_pred = self.call(x_tensor);
+
+            // Compute loss
+            let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_tensor);
             let l = self.pool.get_data(loss)[0];
 
             // Log
@@ -149,7 +173,7 @@ impl MLP {
         let s = Instant::now();
 
         for epoch in 0..epochs {
-            let mut rng = rand::thread_rng();
+            let mut rng = thread_rng();
             let mut indices: Vec<usize> = (0..x.len()).collect();
             indices.shuffle(&mut rng);
 
@@ -164,7 +188,7 @@ impl MLP {
                 let y_pred = self.call(x);
 
                 // Compute loss
-                let loss = cross_entropy_loss(&mut self.pool, y_pred, y);
+                let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y);
 
                 // Log
                 let total_batches = indices.len().div_ceil(batch_size);
@@ -198,7 +222,7 @@ impl MLP {
     }
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————
-    fn eval(&mut self, x: &[f32]) -> Vec<f32> {
+    pub fn eval(&mut self, x: &[f32]) -> Vec<f32> {
         let old_dropout_rate = self.hyperparameters.dropout_rate;
         self.hyperparameters.dropout_rate = 0.0;
         let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);

@@ -95,6 +95,8 @@ impl Gpu {
             ("mean_backward", "reduce", "mean_backward"),
             ("sum_backward", "reduce", "sum_backward"),
             ("sub_row_max_backward", "reduce", "sub_row_max_backward"),
+            ("row_mean", "reduce", "row_mean"),
+            ("row_mean_backward", "reduce", "row_mean_backward"),
             ("gather", "gather", "gather"),
             ("gather_backward", "gather", "gather_backward"),
             ("bias_add", "bias", "bias_add"),

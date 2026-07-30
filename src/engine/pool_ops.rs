@@ -158,6 +158,9 @@ impl Pool {
     pub fn tanh(&mut self, a: Tensor) -> Tensor {
         self.unary_op(a, 0, "tanh")
     }
+    pub fn sq(&mut self, a: Tensor) -> Tensor {
+        self.unary_op(a, 12, "sq")
+    }
     pub fn mul(&mut self, a: Tensor, b: Tensor) -> Tensor {
         self.binary_op(a, b, 1, "mul")
     }
@@ -167,23 +170,39 @@ impl Pool {
     pub fn matadd(&mut self, a: Tensor, b: Tensor) -> Tensor {
         self.binary_op(a, b, 0, "matadd")
     }
+    pub fn sub(&mut self, a: Tensor, b: Tensor) -> Tensor {
+        self.binary_op(a, b, 7, "sub")
+    }
 
     pub fn mean(&mut self, a: Tensor) -> Tensor {
-        let len = self.nodes[a.0].len;
-        let sum = self.gpu.empty_buffer(1);
-        self.gpu.dispatch(
-            "sum",
-            &[&self.nodes[a.0].data, &self.nodes[a.0].data],
-            &[&sum],
-            [1, len as u32, 0, 0],
-            (1, 1, 1),
-        );
-        let divisor = self.gpu.upload_buffer(&[len as f32]);
-        let data = self.gpu.empty_buffer(1);
-        self.gpu
-            .dispatch("div", &[&sum, &divisor], &[&data], [1, 1, 0, 0], (1, 1, 1));
-        let node = self.node_from_buffer(data, vec![1]);
-        self.push_node(node, vec![a.0], "mean")
+        if self.nodes[a.0].shape.len() == 1 {
+            let len = self.nodes[a.0].len;
+            let sum = self.gpu.empty_buffer(1);
+            self.gpu.dispatch(
+                "sum",
+                &[&self.nodes[a.0].data, &self.nodes[a.0].data],
+                &[&sum],
+                [1, len as u32, 0, 0],
+                (1, 1, 1),
+            );
+            let divisor = self.gpu.upload_buffer(&[len as f32]);
+            let data = self.gpu.empty_buffer(1);
+            self.gpu.dispatch("div", &[&sum, &divisor], &[&data], [1, 1, 0, 0], (1, 1, 1));
+            let node = self.node_from_buffer(data, vec![1]);
+            self.push_node(node, vec![a.0], "mean")
+        } else {
+            let (rows, cols) = (self.nodes[a.0].shape[0], self.nodes[a.0].shape[1]);
+            let data = self.gpu.empty_buffer(rows);
+            self.gpu.dispatch(
+                "row_mean",
+                &[&self.nodes[a.0].data, &self.nodes[a.0].data],
+                &[&data],
+                [rows as u32, cols as u32, 0, 0],
+                Self::groups_1d(rows),
+            );
+            let node = self.node_from_buffer(data, vec![rows]);
+            self.push_node(node, vec![a.0], "mean")
+        }
     }
 
     pub fn sum(&mut self, a: Tensor) -> Tensor {
@@ -313,16 +332,37 @@ impl Pool {
             }
             "mean" => {
                 let out = alloc(a.len);
+                if a.shape.len() == 1 {
+                    self.gpu.dispatch(
+                        "mean_backward",
+                        &[&cur.grad, &cur.grad],
+                        &[&out],
+                        [a.len as u32, 0, 0, 0],
+                        Self::groups_1d(a.len),
+                    );
+                } else {
+                    self.gpu.dispatch(
+                        "row_mean_backward",
+                        &[&cur.grad, &cur.grad],
+                        &[&out],
+                        [a.shape[0] as u32, a.shape[1] as u32, 0, 0],
+                        Self::groups_1d(a.len),
+                    );
+                }
+                vec![out]
+            }
+            "neg" => vec![self.unary_buffer(&cur.grad, cur.len, 7)],
+            "sq" => {
+                let out = alloc(a.len);
                 self.gpu.dispatch(
-                    "mean_backward",
-                    &[&cur.grad, &cur.grad],
+                    "unary",
+                    &[&a.data, &cur.grad],
                     &[&out],
-                    [a.len as u32, 0, 0, 0],
+                    [a.len as u32, 13, 0, 0],
                     Self::groups_1d(a.len),
                 );
                 vec![out]
             }
-            "neg" => vec![self.unary_buffer(&cur.grad, cur.len, 7)],
             "exp" | "tanh" => {
                 let out = alloc(cur.len);
                 let kind = if cur.op == "exp" { 5 } else { 8 };
@@ -404,6 +444,10 @@ impl Pool {
             "matadd" => vec![
                 self.unary_buffer(&cur.grad, cur.len, 9),
                 self.unary_buffer(&cur.grad, cur.len, 9),
+            ],
+            "sub" => vec![
+                self.unary_buffer(&cur.grad, cur.len, 9),
+                self.unary_buffer(&cur.grad, cur.len, 3),
             ],
             "reshape" => vec![self.unary_buffer(&cur.grad, cur.len, 9)],
             "dropout" => {

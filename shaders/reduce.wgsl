@@ -48,6 +48,26 @@ fn sum_backward(@builtin(global_invocation_id) id: vec3<u32>) {
 }
 
 @compute @workgroup_size(256)
+fn row_mean(@builtin(global_invocation_id) id: vec3<u32>) {
+    let row = id.y * 65535u * 256u + id.x;
+    if row >= p.rows { return; }
+    var value = 0.0;
+    for (var col = 0u; col < p.cols; col++) {
+        value += input[row * p.cols + col];
+    }
+    out[row] = value / f32(p.cols);
+    if p.sentinel == 4294967295u { out[row] = grad[0]; }
+}
+
+@compute @workgroup_size(256)
+fn row_mean_backward(@builtin(global_invocation_id) id: vec3<u32>) {
+    let i = id.y * 65535u * 256u + id.x;
+    if i >= p.rows * p.cols { return; }
+    out[i] = input[i / p.cols] / f32(p.cols);
+    if p.sentinel == 4294967295u { out[i] = grad[0]; }
+}
+
+@compute @workgroup_size(256)
 fn sub_row_max_backward(@builtin(global_invocation_id) id: vec3<u32>) {
     let row = id.y * 65535u * 256u + id.x;
     if row >= p.rows { return; }
