@@ -105,7 +105,7 @@ impl EpisodeGraph {
                             .contains(crossterm::event::KeyModifiers::CONTROL))
             {
                 let _ = disable_raw_mode();
-                let _ = execute!(stdout(), LeaveAlternateScreen);
+                let _ = execute!(stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
                 std::process::exit(0);
             }
         }

@@ -52,7 +52,13 @@ impl State {
 
         // Update
         let next_state = vec![cart_x_f, cart_v_f, pole_angle_f, pole_angular_v_f];
-        memory.push(Experience { state: self.to_vec(), action, next_state: next_state.clone(), reward: 1.0, done });
+        memory.push(Experience {
+            state: self.to_vec(),
+            action,
+            next_state: next_state.clone(),
+            reward: if done { -1.0 } else { 1.0 },
+            done,
+        });
         let old_state = [&mut self.cart_x, &mut self.cart_v, &mut self.pole_angle, &mut self.pole_angular_v];
         old_state.into_iter().zip(next_state.iter()).for_each(|(v_i, &v_f)| *v_i = v_f);
 

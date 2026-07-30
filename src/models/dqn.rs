@@ -20,6 +20,7 @@ pub fn dqn() {
     let total_steps = 10_000;
     let min_eps = 0.01;
     let batch_size = 32;
+    let gamma = 0.95;
 
     let mut graph = EpisodeGraph::new().unwrap();
 
@@ -32,7 +33,7 @@ pub fn dqn() {
         state.step(action, &mut memory, &mut graph);
     }
 
-    // DQN loop
+    // Episode loop
     let mut model = MLP::new(hyperparameters);
     let mut decay = LinearDecay::new(total_steps, min_eps);
 
@@ -56,7 +57,6 @@ pub fn dqn() {
         // Sample batch from memory
         let batch: Vec<&Experience> = memory.batch();
 
-        // TODO: HOW DOES THIS MAKE ANY SENSE
         let (xs, ys): (Vec<Vec<f32>>, Vec<Vec<f32>>) = batch.iter().map(|exp| {
             let xs_i = exp.state.clone();
 
@@ -67,7 +67,7 @@ pub fn dqn() {
             y_i[exp.action as usize] = if exp.done {
                 exp.reward
             } else {
-                exp.reward + 0.99 * max_next_q
+                exp.reward + gamma * max_next_q
             };
 
             (xs_i, y_i)
