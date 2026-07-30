@@ -2,7 +2,7 @@ use crate::*;
 
 // ——— DQN ————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-fn dqn() {
+pub fn dqn() {
     let hyperparameters = Hyperparameters {
         lr: 0.05,
         training_mode: TrainingMode::OnePass,
@@ -36,7 +36,7 @@ fn dqn() {
 
     loop {
 
-        // Pick epsilon-greedy action
+        // Pick action (initially random, eventually purely best)
         let explore = decay.explore();
 
         let action = if explore {
@@ -55,8 +55,8 @@ fn dqn() {
         let batch: Vec<&Experience> = memory.batch();
 
         // TODO: HOW DOES THIS MAKE ANY SENSE
-        let (xs, ys): (Vec<&[f32]>, Vec<Vec<f32>>) = batch.iter().map(|exp| {
-            let xs_i = exp.state.as_slice();
+        let (xs, ys): (Vec<Vec<f32>>, Vec<Vec<f32>>) = batch.iter().map(|exp| {
+            let xs_i = exp.state.clone();
 
             let next_q = model.eval(&exp.next_state);
             let max_next_q = next_q.iter().cloned().reduce(f32::max).unwrap_or(0.0);
@@ -72,9 +72,7 @@ fn dqn() {
         }).unzip();
 
         // Train model on batch
-        // model.train(xs, ys);
-
-        break;
+        model.train(xs.as_slice(), ys.as_slice());
     }
 }
 

@@ -13,6 +13,7 @@ pub struct State {
     pub cart_v: f32,
     pub pole_angle: f32,
     pub pole_angular_v: f32,
+    pub episode_length: usize,
 }
 
 impl State {
@@ -22,10 +23,12 @@ impl State {
             cart_v: 0.0,
             pole_angle: 0.05,
             pole_angular_v: 0.0,
+            episode_length: 0,
         }
     }
 
     pub fn step(&mut self, action: usize, memory: &mut Memory) {
+        self.episode_length += 1;
 
         // Init
         let dir: i32 = (action as i32 + 1) * 2 - 3;
@@ -54,7 +57,10 @@ impl State {
         old_state.into_iter().zip(next_state.iter()).for_each(|(v_i, &v_f)| *v_i = v_f);
 
         // Reset if done
-        if done { *self = State::new() } ;
+        if done {
+            println!("{}", self.episode_length);
+            *self = State::new();
+        }
     }
 
     pub fn to_vec(&self) -> Vec<f32> {

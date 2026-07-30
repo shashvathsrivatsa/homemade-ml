@@ -88,8 +88,7 @@ impl MLP {
     }
 
     // —— Training —————————————————————————————————————————————————————————————————————————
-    pub fn train(&mut self, x: &[Vec<f32>], y: &[f32]) {
-        println!("Training...");
+    pub fn train(&mut self, x: &[Vec<f32>], y: &[Vec<f32>]) {
         match self.hyperparameters.training_mode {
             TrainingMode::Full { loss_threshold } => self.train_full(x, y, loss_threshold),
             TrainingMode::Batch { batch_size, epochs } => self.train_batch(x, y, batch_size, epochs),
@@ -97,47 +96,42 @@ impl MLP {
         }
     }
 
-    fn train_once(&mut self, x: &[Vec<f32>], y: &[f32]) {
-            // Load
-            let x_data: Vec<f32> = x.iter().flatten().copied().collect();
-            let x_tensor = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
-            let y_tensor = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
+    fn train_once(&mut self, x: &[Vec<f32>], y: &[Vec<f32>]) {
 
-            // Forward pass
-            let y_pred = self.call(x_tensor);
+        // Load
+        let x_data: Vec<f32> = x.iter().flatten().copied().collect();
+        let y_data: Vec<f32> = y.iter().flatten().copied().collect();
+        let x_input = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
+        let y_target = self.pool.new_tensor(y_data, vec![y.len(), y[0].len()]);
 
-            // Compute loss
-            let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_tensor);
-            let l = self.pool.get_data(loss)[0];
-
-            // Backprop
-            self.pool.backpropogate(loss);
-
-            // Update weights
-            self.pool.update_weights(&mut self.optimizer_data);
-
-            // Flush
-            self.pool.flush();
+        // Do the whole thing
+        let y_pred = self.call(x_input);
+        let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_target);
+        self.pool.backpropogate(loss);
+        self.pool.update_weights(&mut self.optimizer_data);
+        self.pool.flush();
     }
 
-    fn train_full(&mut self, x: &[Vec<f32>], y: &[f32], loss_threshold: f32) {
+    fn train_full(&mut self, x: &[Vec<f32>], y: &[Vec<f32>], loss_threshold: f32) {
+        println!("Training...");
         let s = Instant::now();
+        let y = &y[0];
         let mut steps = 0;
         let mut loss_graph = LossGraph::new().expect("failed to initialize loss graph");
 
         // Load
         let x_data: Vec<f32> = x.iter().flatten().copied().collect();
-        let x_tensor = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
-        let y_tensor = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
+        let x_input = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
+        let y_target = self.pool.new_tensor(y.to_vec(), vec![y.len()]);
 
         loop {
             steps += 1;
 
             // Forward pass
-            let y_pred = self.call(x_tensor);
+            let y_pred = self.call(x_input);
 
             // Compute loss
-            let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_tensor);
+            let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_target);
             let l = self.pool.get_data(loss)[0];
 
             // Log
@@ -169,8 +163,10 @@ impl MLP {
         }
     }
 
-    fn train_batch(&mut self, x: &[Vec<f32>], y: &[f32], batch_size: usize, epochs: usize) {
+    fn train_batch(&mut self, x: &[Vec<f32>], y: &[Vec<f32>], batch_size: usize, epochs: usize) {
+        println!("Training...");
         let s = Instant::now();
+        let y = &y[0];
 
         for epoch in 0..epochs {
             let mut rng = thread_rng();
@@ -178,6 +174,7 @@ impl MLP {
             indices.shuffle(&mut rng);
 
             for (batch_num, chunk) in indices.chunks(batch_size).enumerate() {
+
                 // Load
                 let x_data: Vec<f32> = chunk.iter().flat_map(|&i| x[i].iter().copied()).collect();
                 let y_data: Vec<f32> = chunk.iter().map(|&i| y[i]).collect();
