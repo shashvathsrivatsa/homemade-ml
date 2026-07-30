@@ -1,6 +1,3 @@
-pub mod hyperparameters;
-pub use hyperparameters::*;
-
 pub mod mlp;
 pub use mlp::*;
 

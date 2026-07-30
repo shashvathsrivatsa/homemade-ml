@@ -1,30 +1,33 @@
-// use crate::*;
+use crate::*;
 
 // ——— Memory —————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-pub struct MemoryNode {
+pub struct Experience {
     pub state: Vec<f32>,
     pub action: usize,
-    pub reward: f32,
     pub next_state: Vec<f32>,
+    pub reward: f32,
     pub done: bool,
 }
 
 pub struct Memory {
-    pub memories: Vec<MemoryNode>,
+    pub memories: VecDeque<Experience>,
     pub capacity: usize,
 }
 
 impl Memory {
     pub fn new() -> Self {
-        Self { memories: vec![], capacity: 10_000 }
+        Self {
+            memories: VecDeque::with_capacity(10_000),
+            capacity: 10_000,
+        }
     }
 
-    pub fn push(&mut self, node: MemoryNode) {
+    pub fn push(&mut self, node: Experience) {
         if self.memories.len() >= self.capacity {
-            self.memories.remove(0);
+            self.memories.pop_front();
         }
-        self.memories.push(node);
+        self.memories.push_back(node);
     }
 }
 
