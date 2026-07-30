@@ -52,7 +52,7 @@ impl Gpu {
             })
         .await
             .expect("no Vulkan GPU adapter found");
-        println!("{:?}", adapter.get_info());
+        // println!("{:?}", adapter.get_info());
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 required_limits: wgpu::Limits {

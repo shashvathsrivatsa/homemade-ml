@@ -27,7 +27,7 @@ impl State {
         }
     }
 
-    pub fn step(&mut self, action: usize, memory: &mut Memory) {
+    pub fn step(&mut self, action: usize, memory: &mut Memory, graph: &mut EpisodeGraph) {
         self.episode_length += 1;
 
         // Init
@@ -58,7 +58,7 @@ impl State {
 
         // Reset if done
         if done {
-            println!("{}", self.episode_length);
+            graph.draw(self.episode_length).unwrap();
             *self = State::new();
         }
     }

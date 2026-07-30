@@ -10,6 +10,9 @@ pub use models::*;
 pub mod utils;
 pub use utils::*;
 
+pub mod tui;
+pub use tui::*;
+
 pub mod gpu;
 pub use gpu::*;
 

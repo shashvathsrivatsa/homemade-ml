@@ -21,16 +21,18 @@ pub fn dqn() {
     let min_eps = 0.01;
     let batch_size = 32;
 
+    let mut graph = EpisodeGraph::new().unwrap();
+
     // Warmup (populate memory)
     let mut state = State::new();
     let mut memory = Memory::new(memory_capacity, batch_size);
 
     for _ in 0..min_experiences {
         let action = random::<usize>() % 2;
-        state.step(action, &mut memory);
+        state.step(action, &mut memory, &mut graph);
     }
 
-    // Episode loop
+    // DQN loop
     let mut model = MLP::new(hyperparameters);
     let mut decay = LinearDecay::new(total_steps, min_eps);
 
@@ -49,7 +51,7 @@ pub fn dqn() {
         };
 
         // Step environment
-        state.step(action, &mut memory);
+        state.step(action, &mut memory, &mut graph);
 
         // Sample batch from memory
         let batch: Vec<&Experience> = memory.batch();
