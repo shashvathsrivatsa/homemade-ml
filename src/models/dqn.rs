@@ -3,7 +3,8 @@ use crate::*;
 // ——— DQN ————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 pub fn dqn(hyperparameters: DqnHyperparameters) {
-    let mut model = MLP::new(hyperparameters.model_hyperparameters);
+    let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
+    let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
     let mut graph = EpisodeGraph::new().unwrap();
 
@@ -25,7 +26,7 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
         let action = if explore {
             random::<usize>() % 2
         } else {
-            let y_pred = model.eval(&state.to_vec());
+            let y_pred = fast_model.eval(&state.to_vec());
             y_pred.iter().enumerate()
                 .max_by(|a, b| a.1.total_cmp(b.1))
                 .unwrap().0
@@ -40,9 +41,9 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
         let (xs, ys): (Vec<Vec<f32>>, Vec<Vec<f32>>) = batch.iter().map(|exp| {
             let xs_i = exp.state.clone();
 
-            let next_q = model.eval(&exp.next_state);
+            let next_q = slow_model.eval(&exp.next_state);
             let max_next_q = next_q.iter().cloned().reduce(f32::max).unwrap_or(0.0);
-            let mut y_i = model.eval(&exp.state);
+            let mut y_i = slow_model.eval(&exp.state);
 
             y_i[exp.action as usize] = if exp.done {
                 exp.reward
@@ -54,7 +55,7 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
         }).unzip();
 
         // Train model on batch
-        model.train(xs.as_slice(), ys.as_slice());
+        fast_model.train(xs.as_slice(), ys.as_slice());
     }
 }
 

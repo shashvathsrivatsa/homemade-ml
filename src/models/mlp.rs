@@ -28,17 +28,15 @@ impl Layer {
 
 // ——— MLP ————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-pub struct MLP {
+pub struct MLP<'wsg> {
     pool: Pool,
     layers: Vec<Layer>,
-    hyperparameters: MlpHyperparameters,
+    hyperparameters: &'wsg MlpHyperparameters,
     optimizer_data: OptimizerData,
 }
 
-impl MLP {
-    pub fn new(
-        hyperparameters: MlpHyperparameters,
-    ) -> Self {
+impl<'wsg> MLP<'wsg> {
+    pub fn new(hyperparameters: &'wsg MlpHyperparameters) -> Self {
         let mut pool = Pool::new();
         let prev = |y: usize| if y == 0 { hyperparameters.n_inputs } else { hyperparameters.n_layers[y - 1] };
 
@@ -68,9 +66,12 @@ impl MLP {
     }
 
     // —— Propogate ————————————————————————————————————————————————————————————————————————
-    fn call(&mut self, x: Tensor) -> Tensor {
+    // mode = "train" / "test"
+    fn call(&mut self, x: Tensor, mode: &'static str) -> Tensor {
         self.layers.iter().enumerate().fold(x, |acc, (i, layer)| {
-            let (activation, dropout_rate) = if i == self.layers.len() - 1 {
+            let (activation, dropout_rate) = if mode == "test" {
+                (&self.hyperparameters.output_activation, 0.0)
+            } else if i == self.layers.len() - 1 {
                 (&self.hyperparameters.output_activation, 0.0)
             } else {
                 (&self.hyperparameters.hidden_activation, self.hyperparameters.dropout_rate)
@@ -105,7 +106,7 @@ impl MLP {
         let y_target = self.pool.new_tensor(y_data, vec![y.len(), y[0].len()]);
 
         // Do the whole thing
-        let y_pred = self.call(x_input);
+        let y_pred = self.call(x_input, "train");
         let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_target);
         self.pool.backpropogate(loss);
         self.pool.update_weights(&mut self.optimizer_data);
@@ -128,7 +129,7 @@ impl MLP {
             steps += 1;
 
             // Forward pass
-            let y_pred = self.call(x_input);
+            let y_pred = self.call(x_input, "train");
 
             // Compute loss
             let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y_target);
@@ -182,7 +183,7 @@ impl MLP {
                 let y = self.pool.new_tensor(y_data, vec![chunk.len()]);
 
                 // Forward pass
-                let y_pred = self.call(x);
+                let y_pred = self.call(x, "train");
 
                 // Compute loss
                 let loss = self.hyperparameters.loss_function.apply(&mut self.pool, y_pred, y);
@@ -220,15 +221,10 @@ impl MLP {
 
     // —— Testing ——————————————————————————————————————————————————————————————————————————
     pub fn eval(&mut self, x: &[f32]) -> Vec<f32> {
-        let old_dropout_rate = self.hyperparameters.dropout_rate;
-        self.hyperparameters.dropout_rate = 0.0;
         let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);
-        let y = self.call(x);
-
+        let y = self.call(x, "test");
         let result: Vec<f32> = self.pool.get_data(y).to_owned();
-
         self.pool.flush();
-        self.hyperparameters.dropout_rate = old_dropout_rate;
         result
     }
 
