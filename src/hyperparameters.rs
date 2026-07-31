@@ -36,5 +36,6 @@ pub struct DqnHyperparameters {
     pub min_eps: f32,
     pub batch_size: usize,
     pub gamma: f32,
+    pub sync_freq: usize,
 }
 

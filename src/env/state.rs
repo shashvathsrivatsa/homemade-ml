@@ -48,7 +48,7 @@ impl State {
         let pole_angle_f = self.pole_angle + self.pole_angular_v * dt;
         let cart_v_f = self.cart_v + a_c * dt;
         let cart_x_f = self.cart_x + self.cart_v * dt;
-        let done = self.cart_x.abs() > 5.0 || self.pole_angle.abs() > 12.0_f32.to_radians();
+        let done = cart_x_f.abs() > 5.0 || pole_angle_f.abs() > 12.0_f32.to_radians();
 
         // Update
         let next_state = vec![cart_x_f, cart_v_f, pole_angle_f, pole_angular_v_f];

@@ -69,12 +69,14 @@ impl<'wsg> MLP<'wsg> {
     // mode = "train" / "test"
     fn call(&mut self, x: Tensor, mode: &'static str) -> Tensor {
         self.layers.iter().enumerate().fold(x, |acc, (i, layer)| {
-            let (activation, dropout_rate) = if mode == "test" {
-                (&self.hyperparameters.output_activation, 0.0)
-            } else if i == self.layers.len() - 1 {
+            let (activation, dropout_rate) = if i == self.layers.len() - 1 {
                 (&self.hyperparameters.output_activation, 0.0)
             } else {
-                (&self.hyperparameters.hidden_activation, self.hyperparameters.dropout_rate)
+                if mode == "test" {
+                    (&self.hyperparameters.hidden_activation, 0.0)
+                } else {
+                    (&self.hyperparameters.hidden_activation, self.hyperparameters.dropout_rate)
+                }
             };
 
             layer.call(&mut self.pool, acc, activation, dropout_rate)

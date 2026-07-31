@@ -5,6 +5,7 @@ use crate::*;
 pub fn dqn(hyperparameters: DqnHyperparameters) {
     let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
+    fast_model.copy_weights_to(&mut slow_model);
     let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
     let mut graph = EpisodeGraph::new().unwrap();
 
@@ -60,7 +61,7 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
         fast_model.train(xs.as_slice(), ys.as_slice());
 
         // Periodically sync networks
-        if step % 1000 == 0 { fast_model.copy_weights_to(&mut slow_model); }
+        if step % hyperparameters.sync_freq == 0 { fast_model.copy_weights_to(&mut slow_model); }
     }
 }
 
