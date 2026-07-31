@@ -62,17 +62,15 @@ impl State {
         let old_state = [&mut self.cart_x, &mut self.cart_v, &mut self.pole_angle, &mut self.pole_angular_v];
         old_state.into_iter().zip(next_state.iter()).for_each(|(v_i, &v_f)| *v_i = v_f);
 
-        // Reset if done
+        // Stream progress to the graph and reset if done
+        let quit = graph.update(self.episode_length, done).unwrap();
         if done {
-            let quit = graph.draw(self.episode_length).unwrap();
             *self = State::new();
-            return quit;
         }
-        false
+        quit
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
         vec![self.cart_x, self.cart_v, self.pole_angle, self.pole_angular_v]
     }
 }
-

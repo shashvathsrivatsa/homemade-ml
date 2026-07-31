@@ -4,14 +4,33 @@ use crate::*;
 
 const MOVING_AVG_WINDOW: usize = 50;
 
+fn non_degenerate_bounds(min: f64, max: f64) -> (f64, f64) {
+    if min == max {
+        let padding = min.abs().mul_add(0.05, 1.0);
+        (min - padding, max + padding)
+    } else {
+        (min, max)
+    }
+}
+
 pub struct EpisodeGraph {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     points: Vec<(f64, f64)>,
+    current: (f64, f64),
+    frame_interval: Duration,
+    last_render: Option<Instant>,
     cleaned_up: bool,
 }
 
 impl EpisodeGraph {
-    pub fn new() -> std::io::Result<Self> {
+    pub fn new(fps: u32) -> std::io::Result<Self> {
+        if fps == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "episode graph FPS must be greater than zero",
+            ));
+        }
+
         enable_raw_mode()?;
         let mut output = stdout();
         if let Err(error) = execute!(output, EnterAlternateScreen) {
@@ -31,38 +50,69 @@ impl EpisodeGraph {
         Ok(Self {
             terminal,
             points: Vec::new(),
+            current: (0.0, 0.0),
+            frame_interval: Duration::from_secs_f64(1.0 / fps as f64),
+            last_render: None,
             cleaned_up: false,
         })
     }
 
-    pub fn draw(&mut self, length: usize) -> std::io::Result<bool> {
+    pub fn update(&mut self, length: usize, done: bool) -> std::io::Result<bool> {
         let episode = self.points.len();
-        self.points.push((episode as f64, length as f64));
+        self.current = (episode as f64, length as f64);
 
+        if done {
+            self.points.push(self.current);
+        }
+
+        let render_due = self
+            .last_render
+            .is_none_or(|last_render| last_render.elapsed() >= self.frame_interval);
+        if done || render_due {
+            self.render(!done)?;
+            self.last_render = Some(Instant::now());
+        }
+
+        self.check_quit()
+    }
+
+    fn render(&mut self, show_current: bool) -> std::io::Result<()> {
         let x_min = 0.0;
-        let x_max = (episode as f64).max(1.0);
-        let (y_min, y_max) = self.points
+        let x_max = self.current.0.max(1.0);
+        let (mut y_min, mut y_max) = self
+            .points
             .iter()
-            .map(|point| point.1)
-            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), value| {
-                (min.min(value), max.max(value))
+            .map(|p| p.1)
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), v| {
+                (min.min(v), max.max(v))
             });
+        if show_current {
+            y_min = y_min.min(self.current.1);
+            y_max = y_max.max(self.current.1);
+        }
+        let (y_min, y_max) = if y_min == f64::INFINITY {
+            (0.0, 1.0)
+        } else {
+            non_degenerate_bounds(y_min, y_max)
+        };
 
-        let moving_avg: Vec<(f64, f64)> = self.points
-            .windows(MOVING_AVG_WINDOW.min(self.points.len()))
+        let moving_avg: Vec<(f64, f64)> = self
+            .points
+            .iter()
             .enumerate()
-            .map(|(i, window)| {
+            .map(|(i, point)| {
+                let window = &self.points[(i + 1).saturating_sub(MOVING_AVG_WINDOW)..=i];
                 let avg = window.iter().map(|p| p.1).sum::<f64>() / window.len() as f64;
-                (i as f64 + (window.len() - 1) as f64, avg)
+                (point.0, avg)
             })
             .collect();
 
         self.terminal.draw(|frame| {
-            let areas = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Min(3), Constraint::Length(1)])
-                .split(frame.area());
-
+            let current: &[(f64, f64)] = if show_current {
+                std::slice::from_ref(&self.current)
+            } else {
+                &[]
+            };
             let datasets = vec![
                 Dataset::default()
                     .marker(symbols::Marker::Dot)
@@ -74,6 +124,11 @@ impl EpisodeGraph {
                     .graph_type(GraphType::Line)
                     .style(Style::default().fg(Color::Cyan))
                     .data(&moving_avg),
+                Dataset::default()
+                    .marker(symbols::Marker::Dot)
+                    .graph_type(GraphType::Scatter)
+                    .style(Style::default().fg(Color::White))
+                    .data(current),
             ];
 
             let chart = Chart::new(datasets)
@@ -86,13 +141,10 @@ impl EpisodeGraph {
                     Line::from(format!("{y_max:.0}")),
                 ]));
 
-            let status = Paragraph::new(format!("Episode: {episode}  Length: {length}")).alignment(Alignment::Center);
-
-            frame.render_widget(chart, areas[0]);
-            frame.render_widget(status, areas[1]);
+            frame.render_widget(chart, frame.area());
         })?;
 
-        self.check_quit()
+        Ok(())
     }
 
     fn check_quit(&mut self) -> std::io::Result<bool> {
@@ -120,7 +172,7 @@ impl EpisodeGraph {
         }
 
         let x_min = 0.0;
-        let x_max = (self.points.len() - 1) as f64;
+        let x_max = ((self.points.len() - 1) as f64).max(x_min + 1.0);
         let (y_min, y_max) = self
             .points
             .iter()
@@ -128,6 +180,7 @@ impl EpisodeGraph {
             .fold((f64::INFINITY, f64::NEG_INFINITY), |(min, max), value| {
                 (min.min(value), max.max(value))
             });
+        let (y_min, y_max) = non_degenerate_bounds(y_min, y_max);
 
         let root = BitMapBackend::new(path.as_ref(), (1200, 700)).into_drawing_area();
         root.fill(&RGBColor(10, 14, 20))?;
@@ -154,7 +207,9 @@ impl EpisodeGraph {
 
 impl Drop for EpisodeGraph {
     fn drop(&mut self) {
-        if self.cleaned_up { return; }
+        if self.cleaned_up {
+            return;
+        }
         let _ = disable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();

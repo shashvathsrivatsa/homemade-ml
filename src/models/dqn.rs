@@ -7,7 +7,7 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
     fast_model.copy_weights_to(&mut slow_model);
     let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
-    let mut graph = EpisodeGraph::new().unwrap();
+    let mut graph = EpisodeGraph::new(10).unwrap();
 
     // Warmup (populate memory)
     let mut state = State::new();
@@ -15,7 +15,7 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
 
     for _ in 0..hyperparameters.min_experiences {
         let action = random::<usize>() % 2;
-        state.step(action, &mut memory, &mut graph);
+        if state.step(action, &mut memory, &mut graph) { return; }
     }
 
     // Episode loop
@@ -72,4 +72,3 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
         if step % hyperparameters.sync_freq == 0 { fast_model.copy_weights_to(&mut slow_model); }
     }
 }
-
