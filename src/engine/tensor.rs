@@ -10,6 +10,7 @@ pub struct TensorNode {
     pub len: usize,
     pub parents: Vec<usize>,
     pub op: &'static str,
+    pub saved: Vec<wgpu::Buffer>,
 }
 
 impl TensorNode {
@@ -18,6 +19,15 @@ impl TensorNode {
         let strides = (0..shape.len())
             .map(|dim| shape[dim + 1..].iter().product())
             .collect();
-        Self { data, grad, shape, strides, len, parents: vec![], op: "" }
+        Self {
+            data,
+            grad,
+            shape,
+            strides,
+            len,
+            parents: vec![],
+            op: "",
+            saved: vec![],
+        }
     }
 }

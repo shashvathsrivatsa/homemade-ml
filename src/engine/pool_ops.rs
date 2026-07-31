@@ -249,18 +249,24 @@ impl Pool {
     }
 
     pub fn dropout(&mut self, a: Tensor, rate: f32) -> Tensor {
+        assert!(
+            rate.is_finite() && (0.0..1.0).contains(&rate),
+            "dropout rate must be finite and in [0, 1)"
+        );
         let seed = rand::random::<u32>();
         let shape = self.nodes[a.0].shape.clone();
         let len = self.nodes[a.0].len;
         let out = self.gpu.empty_buffer(len);
+        let mask = self.gpu.empty_buffer(len);
         self.gpu.dispatch(
             "dropout",
             &[&self.nodes[a.0].data],
-            &[&out],
+            &[&out, &mask],
             [len as u32, rate.to_bits(), seed, 0],
             Self::groups_1d(len),
         );
-        let node = self.node_from_buffer(out, shape);
+        let mut node = self.node_from_buffer(out, shape);
+        node.saved.push(mask);
         self.push_node(node, vec![a.0], "dropout")
     }
 
@@ -451,15 +457,8 @@ impl Pool {
             ],
             "reshape" => vec![self.unary_buffer(&cur.grad, cur.len, 9)],
             "dropout" => {
-                let out = alloc(a.len);
-                self.gpu.dispatch(
-                    "unary",
-                    &[&cur.data, &cur.grad],
-                    &[&out],
-                    [cur.len as u32, 11, 0, 0],
-                    Self::groups_1d(cur.len),
-                );
-                vec![out]
+                let mask = &cur.saved[0];
+                vec![self.binary_buffer(mask, &cur.grad, cur.len, 1)]
             }
             op => panic!("{op} not accounted for"),
         }
