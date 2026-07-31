@@ -2,7 +2,7 @@ use crate::*;
 
 // ——— DQN ————————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-pub fn dqn(hyperparameters: DqnHyperparameters) {
+pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
@@ -15,7 +15,7 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
     // Warmup (populate memory)
     for _ in 0..hyperparameters.min_experiences {
         let action = random::<usize>() % 2;
-        let step_result = state.step(action, &mut graph);
+        let step_result = state.step(action, Some(&mut graph));
         if step_result.quit { return; }
         memory.push(step_result.experience);
     }
@@ -38,8 +38,8 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
         };
 
         // Step environment
-        let step_result = state.step(action, &mut graph);
-        if step_result.quit { fast_model.save(false); return; };
+        let step_result = state.step(action, Some(&mut graph));
+        if step_result.quit { return; };
         if step_result.experience.done && step_result.episode_len > best_episode_len {
             best_episode_len = step_result.episode_len;
             fast_model.save(true);
@@ -75,5 +75,27 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
 
         // Periodically sync networks
         if step % hyperparameters.sync_freq == 0 { fast_model.copy_weights_to(&mut slow_model); }
+    }
+}
+
+pub fn dqn_test(hyperparameters: DqnHyperparameters) {
+    let mut model = MLP::new(&hyperparameters.model_hyperparameters);
+    let mut state = State::new();
+    let mut visualization = CartPoleVisualizaiton::new(10).unwrap();
+    model.load(true);
+
+    // Episode loop
+    loop {
+
+        // Pick model-predicted action
+        let y_pred = model.eval(&state.to_vec());
+        let action = y_pred.iter().enumerate()
+            .max_by(|a, b| a.1.total_cmp(b.1))
+            .unwrap().0;
+
+        // Step environment
+        let step_result = state.step(action, Some(&mut visualization));
+        std::thread::sleep(Duration::from_millis(100));
+        if step_result.quit || step_result.experience.done { return; }
     }
 }

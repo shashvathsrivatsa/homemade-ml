@@ -284,7 +284,7 @@ impl<'wsg> MLP<'wsg> {
         if !silent { println!("Saved model weights"); }
     }
 
-    pub fn load(&mut self) {
+    pub fn load(&mut self, silent: bool) {
         let txt = fs::read_to_string("model.txt").unwrap();
         let weights: Vec<f32> = txt.lines().map(|l| l.parse().unwrap()).collect();
         let mut offset = 0;
@@ -294,7 +294,7 @@ impl<'wsg> MLP<'wsg> {
                 .set_data(p, weights[offset..offset + size].to_vec());
             offset += size;
         }
-        println!("Loaded model weights");
+        if !silent { println!("Loaded model weights"); }
     }
 
     // this moves data from gpu buffer -> cpu -> new gpu buffer

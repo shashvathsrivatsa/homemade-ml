@@ -26,6 +26,6 @@ fn main() {
         sync_freq: 100,
     };
 
-    dqn(dqn_hyperparameters);
+    dqn_train(dqn_hyperparameters);
 }
 

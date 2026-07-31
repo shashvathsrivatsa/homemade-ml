@@ -205,6 +205,18 @@ impl EpisodeGraph {
     }
 }
 
+impl StateVisualization for EpisodeGraph {
+    fn update_state(
+        &mut self,
+        _cart_x: f32,
+        _pole_angle: f32,
+        episode_len: usize,
+        done: bool,
+    ) -> std::io::Result<bool> {
+        self.update(episode_len, done)
+    }
+}
+
 impl Drop for EpisodeGraph {
     fn drop(&mut self) {
         if self.cleaned_up {

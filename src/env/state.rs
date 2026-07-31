@@ -6,7 +6,7 @@ const G: f32 = 9.8;
 const M_C: f32 = 1.0;
 const M_P: f32 = 0.1;
 const L_P: f32 = 1.0;
-const F_FACTOR: f32 = 10.0;
+const F_FACTOR: f32 = 100.0;
 
 pub struct State {
     pub cart_x: f32,
@@ -27,7 +27,7 @@ impl State {
         }
     }
 
-    pub fn step(&mut self, action: usize, graph: &mut EpisodeGraph) -> StepResult {
+    pub fn step(&mut self, action: usize, visualization: Option<&mut dyn StateVisualization>) -> StepResult {
         self.episode_len += 1;
 
         // Init
@@ -63,7 +63,13 @@ impl State {
         old_state.into_iter().zip(next_state.iter()).for_each(|(v_i, &v_f)| *v_i = v_f);
 
         // Output & reset if done
-        let quit = graph.update(self.episode_len, done).unwrap();
+        let quit = if let Some(visualization) = visualization {
+            visualization
+                .update_state(cart_x_f, pole_angle_f, self.episode_len, done)
+                .unwrap()
+        } else {
+            false
+        };
         let episode_len = self.episode_len;
         if done { *self = State::new(); }
         StepResult { quit, experience, episode_len }
@@ -79,4 +85,3 @@ pub struct StepResult {
     pub experience: Experience,
     pub episode_len: usize,
 }
-
