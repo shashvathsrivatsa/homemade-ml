@@ -35,8 +35,11 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
                 .unwrap().0
         };
 
-        // Step environment
-        state.step(action, &mut memory, &mut graph);
+        // Step environment (and save weights & break if quit)
+        if state.step(action, &mut memory, &mut graph) {
+            fast_model.save();
+            return;
+        };
 
         // Sample batch from memory
         let batch: Vec<&Experience> = memory.batch();

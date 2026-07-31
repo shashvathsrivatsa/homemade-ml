@@ -7,6 +7,7 @@ const MOVING_AVG_WINDOW: usize = 50;
 pub struct EpisodeGraph {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     points: Vec<(f64, f64)>,
+    cleaned_up: bool,
 }
 
 impl EpisodeGraph {
@@ -30,6 +31,7 @@ impl EpisodeGraph {
         Ok(Self {
             terminal,
             points: Vec::new(),
+            cleaned_up: false,
         })
     }
 
@@ -90,13 +92,12 @@ impl EpisodeGraph {
             frame.render_widget(status, areas[1]);
         })?;
 
-        self.check_quit();
-        Ok(false)
+        self.check_quit()
     }
 
-    fn check_quit(&self) {
-        while event::poll(Duration::ZERO).unwrap_or(false) {
-            if let Ok(Event::Key(key)) = event::read()
+    fn check_quit(&mut self) -> std::io::Result<bool> {
+        while event::poll(Duration::ZERO)? {
+            if let Event::Key(key) = event::read()?
                 && key.kind == KeyEventKind::Press
                 && (key.code == KeyCode::Char('q')
                     || key.code == KeyCode::Char('c')
@@ -104,11 +105,13 @@ impl EpisodeGraph {
                             .modifiers
                             .contains(crossterm::event::KeyModifiers::CONTROL))
             {
+                self.cleaned_up = true;
                 let _ = disable_raw_mode();
                 let _ = execute!(stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
-                std::process::exit(0);
+                return Ok(true);
             }
         }
+        Ok(false)
     }
 
     pub fn save_png(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
@@ -151,6 +154,7 @@ impl EpisodeGraph {
 
 impl Drop for EpisodeGraph {
     fn drop(&mut self) {
+        if self.cleaned_up { return; }
         let _ = disable_raw_mode();
         let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();

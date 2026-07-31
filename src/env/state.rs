@@ -27,7 +27,7 @@ impl State {
         }
     }
 
-    pub fn step(&mut self, action: usize, memory: &mut Memory, graph: &mut EpisodeGraph) {
+    pub fn step(&mut self, action: usize, memory: &mut Memory, graph: &mut EpisodeGraph) -> bool {
         self.episode_length += 1;
 
         // Init
@@ -64,9 +64,11 @@ impl State {
 
         // Reset if done
         if done {
-            graph.draw(self.episode_length).unwrap();
+            let quit = graph.draw(self.episode_length).unwrap();
             *self = State::new();
+            return quit;
         }
+        false
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
