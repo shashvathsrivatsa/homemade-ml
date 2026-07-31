@@ -5,17 +5,19 @@ use crate::*;
 pub fn dqn(hyperparameters: DqnHyperparameters) {
     let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
-    fast_model.copy_weights_to(&mut slow_model);
     let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
     let mut graph = EpisodeGraph::new(10).unwrap();
-
-    // Warmup (populate memory)
     let mut state = State::new();
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
+    fast_model.copy_weights_to(&mut slow_model);
+    let mut best_episode_len = 100;
 
+    // Warmup (populate memory)
     for _ in 0..hyperparameters.min_experiences {
         let action = random::<usize>() % 2;
-        if state.step(action, &mut memory, &mut graph) { return; }
+        let step_result = state.step(action, &mut graph);
+        if step_result.quit { return; }
+        memory.push(step_result.experience);
     }
 
     // Episode loop
@@ -35,11 +37,14 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
                 .unwrap().0
         };
 
-        // Step environment (and save weights & break if quit)
-        if state.step(action, &mut memory, &mut graph) {
-            fast_model.save();
-            return;
-        };
+        // Step environment
+        let step_result = state.step(action, &mut graph);
+        if step_result.quit { fast_model.save(false); return; };
+        if step_result.experience.done && step_result.episode_len > best_episode_len {
+            best_episode_len = step_result.episode_len;
+            fast_model.save(true);
+        }
+        memory.push(step_result.experience);
 
         // Sample batch from memory
         let batch: Vec<&Experience> = memory.batch();

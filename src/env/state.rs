@@ -13,7 +13,7 @@ pub struct State {
     pub cart_v: f32,
     pub pole_angle: f32,
     pub pole_angular_v: f32,
-    pub episode_length: usize,
+    pub episode_len: usize,
 }
 
 impl State {
@@ -23,12 +23,12 @@ impl State {
             cart_v: 0.0,
             pole_angle: 0.05,
             pole_angular_v: 0.0,
-            episode_length: 0,
+            episode_len: 0,
         }
     }
 
-    pub fn step(&mut self, action: usize, memory: &mut Memory, graph: &mut EpisodeGraph) -> bool {
-        self.episode_length += 1;
+    pub fn step(&mut self, action: usize, graph: &mut EpisodeGraph) -> StepResult {
+        self.episode_len += 1;
 
         // Init
         let dir: i32 = (action as i32 + 1) * 2 - 3;
@@ -52,25 +52,31 @@ impl State {
 
         // Update
         let next_state = vec![cart_x_f, cart_v_f, pole_angle_f, pole_angular_v_f];
-        memory.push(Experience {
+        let experience = Experience {
             state: self.to_vec(),
             action,
             next_state: next_state.clone(),
             reward: if done { -1.0 } else { 1.0 },
             done,
-        });
+        };
         let old_state = [&mut self.cart_x, &mut self.cart_v, &mut self.pole_angle, &mut self.pole_angular_v];
         old_state.into_iter().zip(next_state.iter()).for_each(|(v_i, &v_f)| *v_i = v_f);
 
-        // Stream progress to the graph and reset if done
-        let quit = graph.update(self.episode_length, done).unwrap();
-        if done {
-            *self = State::new();
-        }
-        quit
+        // Output & reset if done
+        let quit = graph.update(self.episode_len, done).unwrap();
+        let episode_len = self.episode_len;
+        if done { *self = State::new(); }
+        StepResult { quit, experience, episode_len }
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
         vec![self.cart_x, self.cart_v, self.pole_angle, self.pole_angular_v]
     }
 }
+
+pub struct StepResult {
+    pub quit: bool,
+    pub experience: Experience,
+    pub episode_len: usize,
+}
+

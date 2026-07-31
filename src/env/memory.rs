@@ -2,6 +2,7 @@ use crate::*;
 
 // ——— Memory —————————————————————————————————————————————————————————————————————————————————————————————————————————
 
+#[derive(Clone)]
 pub struct Experience {
     pub state: Vec<f32>,
     pub action: usize,

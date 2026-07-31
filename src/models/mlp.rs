@@ -269,7 +269,7 @@ impl<'wsg> MLP<'wsg> {
     }
 
     // —— Store ————————————————————————————————————————————————————————————————————————————
-    pub fn save(&mut self) {
+    pub fn save(&mut self, silent: bool) {
         let parameters = self.parameters();
         let weights: Vec<f32> = parameters
             .iter()
@@ -281,7 +281,7 @@ impl<'wsg> MLP<'wsg> {
             .collect::<Vec<_>>()
             .join("\n");
         fs::write("model.txt", txt).unwrap();
-        println!("Saved model weights");
+        if !silent { println!("Saved model weights"); }
     }
 
     pub fn load(&mut self) {
