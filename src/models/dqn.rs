@@ -44,12 +44,17 @@ pub fn dqn(hyperparameters: DqnHyperparameters) {
         // Sample batch from memory
         let batch: Vec<&Experience> = memory.batch();
 
-        let (xs, ys): (Vec<Vec<f32>>, Vec<Vec<f32>>) = batch.iter().map(|exp| {
-            let xs_i = exp.state.clone();
+        let states: Vec<Vec<f32>> = batch.iter().map(|exp| exp.state.clone()).collect();
+        let next_states: Vec<Vec<f32>> = batch.iter().map(|exp| exp.next_state.clone()).collect();
 
-            let next_q = slow_model.eval(&exp.next_state);
-            let max_next_q = next_q.iter().cloned().reduce(f32::max).unwrap_or(0.0);
-            let mut y_i = fast_model.eval(&exp.state);
+        let cur_q_vec = fast_model.eval_batch(&states);
+        let next_q_vec = slow_model.eval_batch(&next_states);
+
+        let (xs, ys): (Vec<Vec<f32>>, Vec<Vec<f32>>) = batch.iter().enumerate().map(|(i, exp)| {
+            let xs_i = exp.state.clone();
+            let mut y_i = cur_q_vec[i].clone();
+            let next_q = next_q_vec[i].clone();
+            let max_next_q = next_q.into_iter().reduce(f32::max).unwrap_or(0.0);
 
             y_i[exp.action as usize] = if exp.done {
                 exp.reward

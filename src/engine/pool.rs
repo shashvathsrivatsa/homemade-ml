@@ -76,6 +76,10 @@ impl Pool {
     pub fn get_data(&self, t: Tensor) -> Vec<f32> {
         self.download(t)
     }
+    pub fn get_data_2d(&self, t: Tensor) -> Vec<Vec<f32>> {
+        let cols = self.nodes[t.0].shape[1];
+        self.download(t).chunks(cols).map(|c| c.to_vec()).collect()
+    }
     pub fn get_grad(&self, t: Tensor) -> Vec<f32> {
         self.download_grad(t)
     }

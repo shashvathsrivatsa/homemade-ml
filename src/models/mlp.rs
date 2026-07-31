@@ -221,11 +221,20 @@ impl<'wsg> MLP<'wsg> {
         println!("{:.2?}", s.elapsed());
     }
 
-    // —— Testing ——————————————————————————————————————————————————————————————————————————
+    // —— Inference ————————————————————————————————————————————————————————————————————————
     pub fn eval(&mut self, x: &[f32]) -> Vec<f32> {
         let x = self.pool.new_tensor(x.to_owned(), vec![1, x.len()]);
         let y = self.call(x, "test");
         let result: Vec<f32> = self.pool.get_data(y).to_owned();
+        self.pool.flush();
+        result
+    }
+
+    pub fn eval_batch(&mut self, x: &[Vec<f32>]) -> Vec<Vec<f32>> {
+        let x_data: Vec<f32> = x.iter().flatten().copied().collect();
+        let x_input = self.pool.new_tensor(x_data, vec![x.len(), x[0].len()]);
+        let y = self.call(x_input, "test");
+        let result: Vec<Vec<f32>> = self.pool.get_data_2d(y);
         self.pool.flush();
         result
     }
