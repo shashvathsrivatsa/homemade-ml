@@ -4,7 +4,7 @@ use crate::*;
 
 const WINDOW_SIZE: f32 = 100.0;
 const MIN_SNAKE_LEN: usize = 50;
-const FRUIT_RADIUS: f32 = 5.0;
+const FRUIT_RADIUS: f32 = 2.5;
 const FRUIT_SIZE_GAIN: usize = 20;
 const HEADING_CHANGE_AMOUNT: f32 = 5.0;
 const SPEED: f32 = 0.1;
@@ -17,9 +17,9 @@ const WALLS: &[(f32, f32)] = &[
     (-WINDOW_SIZE/2.0, WINDOW_SIZE/2.0),
 ];
 
-const REWARD_FRUIT_INCENTIVE: f32 = 1.0;
-const PENALTY_SCARED_OF_DEATH: f32 = -10.0;
-const PENALTY_GOOFING_PENALTY: f32 = -0.01;
+const REWARD_FRUIT_INCENTIVE: f32 = 2.0;
+const PENALTY_SCARED_OF_DEATH: f32 = -1.0;
+const REWARD_APPROACHING_FRUIT_SCALE: f32 = 0.1;
 
 
 pub struct State {
@@ -65,8 +65,8 @@ impl State {
         self.segments.push_front(head_coords);
 
         // Anything happened?
+        let mut reward = (old_state[1] - self.to_vec()[1]) * REWARD_APPROACHING_FRUIT_SCALE;
         let mut done = false;
-        let mut reward = PENALTY_GOOFING_PENALTY;
         let cur_segment: ((f32, f32), (f32, f32)) = (self.segments[0], self.segments[1]);
 
             // collision with fruit
@@ -106,7 +106,7 @@ impl State {
         let fruits_eaten = self.fruits_eaten;
         let quit = if let Some(visualization) = visualization {
             visualization
-                .update_state(fruits_eaten, done)
+                .update_state(&self.segments, self.fruit_coords, fruits_eaten, done)
                 .unwrap()
         } else {
             false

@@ -11,8 +11,8 @@ pub fn polar_to_point(
     p2: (f32, f32),
 ) -> (f32, f32) {
 
-    let dx = p1.0 - p2.0;
-    let dy = p1.1 - p2.1;
+    let dx = p2.0 - p1.0;
+    let dy = p2.1 - p1.1;
     let r = (dx.powi(2) + dy.powi(2)).sqrt();
     let theta = dy.atan2(dx).to_degrees();
     let rel_theta = clamp_deg(theta - heading);
