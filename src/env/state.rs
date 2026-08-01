@@ -18,8 +18,10 @@ const WALLS: &[(f32, f32)] = &[
 ];
 
 const REWARD_FRUIT_INCENTIVE: f32 = 2.0;
-const PENALTY_SCARED_OF_DEATH: f32 = -1.0;
-const REWARD_APPROACHING_FRUIT_SCALE: f32 = 0.1;
+const PENALTY_HIT_OBSTACLE: f32 = -1.0;
+const REWARD_APPROACHING_FRUIT: f32 = 0.1;
+const PENALTY_APPROACHING_BODY: f32 = 0.1;
+const PENALTY_APPROACHING_WALL: f32 = 0.1;
 
 
 pub struct State {
@@ -72,7 +74,7 @@ impl State {
         self.segments.push_front(head_coords);
 
         // Anything happened?
-        let mut reward = (old_state[1] - self.to_vec()[1]) * REWARD_APPROACHING_FRUIT_SCALE;
+        let mut reward = (old_state[1] - self.to_vec()[1]) * REWARD_APPROACHING_FRUIT;
         let mut done = false;
         let cur_segment: ((f32, f32), (f32, f32)) = (self.segments[0], self.segments[1]);
 
@@ -89,7 +91,7 @@ impl State {
             let segment = (*segment[0], *segment[1]);
             if seg_intersect(cur_segment, segment) {
                 done = true;
-                reward = PENALTY_SCARED_OF_DEATH;
+                reward = PENALTY_HIT_OBSTACLE;
             }
         });
 
@@ -98,7 +100,7 @@ impl State {
             let segment = (segment[0], segment[1]);
             if seg_intersect(cur_segment, segment) {
                 done = true;
-                reward = PENALTY_SCARED_OF_DEATH;
+                reward = PENALTY_HIT_OBSTACLE;
             }
         });
 
@@ -114,6 +116,7 @@ impl State {
         let key_pressed: Option<char> = if let Some(visualization) = visualization {
             visualization
                 .update_state(
+                    self.to_vec(),
                     &self.segments,
                     self.fruit_coords,
                     fruits_eaten,
@@ -146,10 +149,13 @@ impl State {
             polar_to_seg(self.segments[0], self.heading, segment)
         }).min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
 
-        let polar_to_self = self.segments.iter().skip(2).collect::<Vec<_>>().windows(2).map(|segment| {
-            let segment = (*segment[0], *segment[1]);
-            polar_to_seg(self.segments[0], self.heading, segment)
-        }).min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap_or((WINDOW_SIZE * 2.0, 0.0));
+        let polar_to_self = self.segments.iter().skip(2).collect::<Vec<_>>().windows(2)
+            .map(|segment| {
+                let segment = (*segment[0], *segment[1]);
+                polar_to_seg(self.segments[0], self.heading, segment)
+            })
+            .filter(|(_, theta)| *theta < 90.0 || *theta > 270.0)
+            .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap_or((WINDOW_SIZE * 2.0, 0.0));
 
         vec![
             self.heading,

@@ -27,5 +27,6 @@ fn main() {
     };
 
     dqn_train(dqn_hyperparameters);
+    // play_snake().unwrap();
 }
 

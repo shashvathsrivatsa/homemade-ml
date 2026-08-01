@@ -215,6 +215,7 @@ impl FruitsGraph {
 impl StateVisualization for FruitsGraph {
     fn update_state(
         &mut self,
+        _state: Vec<f32>,
         _segments: &VecDeque<(f32, f32)>,
         _fruit: (f32, f32),
         fruits_eaten: usize,

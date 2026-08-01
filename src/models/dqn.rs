@@ -7,7 +7,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut decay: Decay = hyperparameters.decay.into_decay();
     // let mut graph = FruitsGraph::new(10).unwrap();
-    let mut graph = SnakeVisualization::new(10).unwrap();
+    let mut graph = SnakeVisualization::new(60).unwrap();
     let mut state = State::new();
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
     let mut best_fruits_eaten = 0;
@@ -18,7 +18,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     // Warmup (populate memory)
     for _ in 0..hyperparameters.min_experiences {
         let action = random::<usize>() % 3;
-        let step_result = state.step(action, Some(&mut graph));
+        let step_result = state.step(action, None);
         if matches!(step_result.key_pressed, Some('q' | '\u{3}')) { return; }
         memory.push(step_result.experience);
     }

@@ -1,4 +1,7 @@
 use crate::*;
+use crossterm::event::{
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+};
 use ratatui::{
     layout::Rect,
     widgets::canvas::{Canvas, Circle, Line as CanvasLine, Rectangle},
@@ -9,9 +12,11 @@ const WORLD_MIN: f64 = -WORLD_SIZE / 2.0;
 const WORLD_MAX: f64 = WORLD_SIZE / 2.0;
 const FRUIT_RADIUS: f64 = 2.5;
 const MOVING_AVG_WINDOW: usize = 50;
+const KEY_REPEAT_TIMEOUT: Duration = Duration::from_millis(50);
 
 pub struct SnakeVisualization {
     terminal: Terminal<CrosstermBackend<Stdout>>,
+    state: Vec<f32>,
     segments: Vec<(f64, f64)>,
     fruit: (f64, f64),
     fruits_eaten: usize,
@@ -20,6 +25,9 @@ pub struct SnakeVisualization {
     current: (f64, f64),
     frame_interval: Duration,
     last_render: Option<Instant>,
+    held_keys: Vec<char>,
+    last_key_activity: Option<Instant>,
+    keyboard_enhancement_enabled: bool,
     cleaned_up: bool,
 }
 
@@ -34,15 +42,37 @@ impl SnakeVisualization {
 
         enable_raw_mode()?;
         let mut output = stdout();
+        let keyboard_enhancement_enabled = matches!(
+            crossterm::terminal::supports_keyboard_enhancement(),
+            Ok(true)
+        );
         if let Err(error) = execute!(output, EnterAlternateScreen) {
             let _ = disable_raw_mode();
             return Err(error);
+        }
+        if keyboard_enhancement_enabled {
+            if let Err(error) = execute!(
+                output,
+                PushKeyboardEnhancementFlags(
+                    KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                        | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                        | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+                        | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                )
+            ) {
+                let _ = execute!(stdout(), LeaveAlternateScreen);
+                let _ = disable_raw_mode();
+                return Err(error);
+            }
         }
 
         let terminal = match Terminal::new(CrosstermBackend::new(output)) {
             Ok(terminal) => terminal,
             Err(error) => {
                 let _ = disable_raw_mode();
+                if keyboard_enhancement_enabled {
+                    let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
+                }
                 let _ = execute!(stdout(), LeaveAlternateScreen);
                 return Err(error);
             }
@@ -50,6 +80,7 @@ impl SnakeVisualization {
 
         Ok(Self {
             terminal,
+            state: Vec::new(),
             segments: Vec::new(),
             fruit: (0.0, 0.0),
             fruits_eaten: 0,
@@ -58,18 +89,23 @@ impl SnakeVisualization {
             current: (0.0, 0.0),
             frame_interval: Duration::from_secs_f64(1.0 / fps as f64),
             last_render: None,
+            held_keys: Vec::new(),
+            last_key_activity: None,
+            keyboard_enhancement_enabled,
             cleaned_up: false,
         })
     }
 
     pub fn update(
         &mut self,
+        state: Vec<f32>,
         segments: &VecDeque<(f32, f32)>,
         fruit: (f32, f32),
         fruits_eaten: usize,
         episode_len: usize,
         done: bool,
     ) -> std::io::Result<Option<char>> {
+        self.state = state;
         self.segments = segments
             .iter()
             .map(|&(x, y)| (f64::from(x), f64::from(y)))
@@ -90,6 +126,10 @@ impl SnakeVisualization {
             self.last_render = Some(Instant::now());
         }
 
+        self.check_key()
+    }
+
+    pub fn poll_key(&mut self) -> std::io::Result<Option<char>> {
         self.check_key()
     }
 
@@ -116,7 +156,7 @@ impl SnakeVisualization {
         self.terminal.draw(|frame| {
             let vertical_areas = Layout::default()
                 .direction(Direction::Vertical)
-                .constraints([Constraint::Min(5), Constraint::Length(1)])
+                .constraints([Constraint::Min(5), Constraint::Length(2)])
                 .split(frame.area());
             let main_areas = Layout::default()
                 .direction(Direction::Horizontal)
@@ -184,10 +224,11 @@ impl SnakeVisualization {
                 ]));
 
             let status = Paragraph::new(format!(
-                "fruits: {}    episode steps: {}    snake length: {}    q: quit",
+                "fruits: {}    episode steps: {}    snake length: {}\nstate: {:.3?}",
                 self.fruits_eaten,
                 self.episode_len,
                 self.segments.len(),
+                self.state,
             ))
             .alignment(Alignment::Center);
 
@@ -201,9 +242,7 @@ impl SnakeVisualization {
 
     fn check_key(&mut self) -> std::io::Result<Option<char>> {
         while event::poll(Duration::ZERO)? {
-            if let Event::Key(key) = event::read()?
-                && key.kind == KeyEventKind::Press
-            {
+            if let Event::Key(key) = event::read()? {
                 if let KeyCode::Char(character) = key.code {
                     let character = if character == 'c'
                         && key
@@ -214,12 +253,30 @@ impl SnakeVisualization {
                     } else {
                         character
                     };
-                    return Ok(Some(character));
+
+                    match key.kind {
+                        KeyEventKind::Press | KeyEventKind::Repeat => {
+                            self.held_keys.retain(|held| *held != character);
+                            self.held_keys.push(character);
+                            self.last_key_activity = Some(Instant::now());
+                        }
+                        KeyEventKind::Release => {
+                            self.held_keys.retain(|held| *held != character);
+                        }
+                    }
                 }
             }
         }
 
-        Ok(None)
+        if !self.keyboard_enhancement_enabled
+            && self
+                .last_key_activity
+                .is_some_and(|activity| activity.elapsed() >= KEY_REPEAT_TIMEOUT)
+        {
+            self.held_keys.clear();
+        }
+
+        Ok(self.held_keys.last().copied())
     }
 }
 
@@ -238,13 +295,14 @@ fn centered_game_area(area: Rect) -> Rect {
 impl StateVisualization for SnakeVisualization {
     fn update_state(
         &mut self,
+        state: Vec<f32>,
         segments: &VecDeque<(f32, f32)>,
         fruit: (f32, f32),
         fruits_eaten: usize,
         episode_len: usize,
         done: bool,
     ) -> std::io::Result<Option<char>> {
-        self.update(segments, fruit, fruits_eaten, episode_len, done)
+        self.update(state, segments, fruit, fruits_eaten, episode_len, done)
     }
 }
 
@@ -254,6 +312,9 @@ impl Drop for SnakeVisualization {
             return;
         }
         let _ = disable_raw_mode();
+        if self.keyboard_enhancement_enabled {
+            let _ = execute!(self.terminal.backend_mut(), PopKeyboardEnhancementFlags);
+        }
         let _ = execute!(self.terminal.backend_mut(), LeaveAlternateScreen);
         let _ = self.terminal.show_cursor();
     }
