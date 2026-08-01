@@ -1,26 +1,29 @@
 pub mod engine;
 pub use engine::*;
 
-pub mod primitives;
-pub use primitives::*;
-
-pub mod models;
-pub use models::*;
-
-pub mod utils;
-pub use utils::*;
-
-pub mod tui;
-pub use tui::*;
+pub mod env;
+pub use env::*;
 
 pub mod gpu;
 pub use gpu::*;
 
-pub mod env;
-pub use env::*;
-
 pub mod hyperparameters;
 pub use hyperparameters::*;
+
+pub mod models;
+pub use models::*;
+
+pub mod primitives;
+pub use primitives::*;
+
+pub mod tui;
+pub use tui::*;
+
+pub mod utils;
+pub use utils::*;
+
+pub mod math;
+pub use math::*;
 
 pub use std::fs;
 pub use std::io::{ Write, Stdout, stdout };

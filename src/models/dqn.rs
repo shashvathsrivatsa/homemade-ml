@@ -6,15 +6,15 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
-    let mut graph = EpisodeGraph::new(10).unwrap();
+    let mut graph = FruitsGraph::new(10).unwrap();
     let mut state = State::new();
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
     fast_model.copy_weights_to(&mut slow_model);
-    let mut best_episode_len = 100;
+    let mut best_fruits_eaten = 100;
 
     // Warmup (populate memory)
     for _ in 0..hyperparameters.min_experiences {
-        let action = random::<usize>() % 2;
+        let action = random::<usize>() % 3;
         let step_result = state.step(action, Some(&mut graph));
         if step_result.quit { return; }
         memory.push(step_result.experience);
@@ -29,7 +29,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
         let explore = decay.explore();
 
         let action = if explore {
-            random::<usize>() % 2
+            random::<usize>() % 3
         } else {
             let y_pred = fast_model.eval(&state.to_vec());
             y_pred.iter().enumerate()
@@ -40,8 +40,8 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
         // Step environment
         let step_result = state.step(action, Some(&mut graph));
         if step_result.quit { return; };
-        if step_result.experience.done && step_result.episode_len > best_episode_len {
-            best_episode_len = step_result.episode_len;
+        if step_result.experience.done && step_result.fruits_eaten > best_fruits_eaten {
+            best_fruits_eaten = step_result.fruits_eaten;
             fast_model.save(true);
         }
         memory.push(step_result.experience);
@@ -78,10 +78,10 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     }
 }
 
-pub fn dqn_test(hyperparameters: DqnHyperparameters) {
+pub fn test_dqn(hyperparameters: DqnHyperparameters) {
     let mut model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut state = State::new();
-    let mut visualization = CartPoleVisualizaiton::new(10).unwrap();
+    let mut visualization = FruitsGraph::new(10).unwrap();
     model.load(true);
 
     // Episode loop

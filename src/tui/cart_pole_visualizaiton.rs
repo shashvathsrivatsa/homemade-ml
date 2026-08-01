@@ -174,18 +174,6 @@ impl CartPoleVisualizaiton {
     }
 }
 
-impl StateVisualization for CartPoleVisualizaiton {
-    fn update_state(
-        &mut self,
-        cart_x: f32,
-        pole_angle: f32,
-        episode_len: usize,
-        _done: bool,
-    ) -> std::io::Result<bool> {
-        self.update(cart_x, pole_angle, episode_len)
-    }
-}
-
 impl Drop for CartPoleVisualizaiton {
     fn drop(&mut self) {
         if self.cleaned_up {

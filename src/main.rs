@@ -7,8 +7,8 @@ fn main() {
         lr: 0.01,
         training_mode: TrainingMode::OnePass,
         dropout_rate: 0.0,
-        n_inputs: 4,
-        n_layers: vec![64, 2],
+        n_inputs: 7,
+        n_layers: vec![64, 3],
         hidden_activation: Relu,
         output_activation: NoActivation,
         loss_function: MSE,
@@ -26,6 +26,6 @@ fn main() {
         sync_freq: 100,
     };
 
-    dqn_test(dqn_hyperparameters);
+    dqn_train(dqn_hyperparameters);
 }
 

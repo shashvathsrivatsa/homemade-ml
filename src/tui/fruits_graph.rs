@@ -13,7 +13,7 @@ fn non_degenerate_bounds(min: f64, max: f64) -> (f64, f64) {
     }
 }
 
-pub struct EpisodeGraph {
+pub struct FruitsGraph {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     points: Vec<(f64, f64)>,
     current: (f64, f64),
@@ -22,12 +22,12 @@ pub struct EpisodeGraph {
     cleaned_up: bool,
 }
 
-impl EpisodeGraph {
+impl FruitsGraph {
     pub fn new(fps: u32) -> std::io::Result<Self> {
         if fps == 0 {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "episode graph FPS must be greater than zero",
+                "fruits graph FPS must be greater than zero",
             ));
         }
 
@@ -57,9 +57,9 @@ impl EpisodeGraph {
         })
     }
 
-    pub fn update(&mut self, length: usize, done: bool) -> std::io::Result<bool> {
+    pub fn update(&mut self, fruits_eaten: usize, done: bool) -> std::io::Result<bool> {
         let episode = self.points.len();
-        self.current = (episode as f64, length as f64);
+        self.current = (episode as f64, fruits_eaten as f64);
 
         if done {
             self.points.push(self.current);
@@ -205,19 +205,17 @@ impl EpisodeGraph {
     }
 }
 
-impl StateVisualization for EpisodeGraph {
+impl StateVisualization for FruitsGraph {
     fn update_state(
         &mut self,
-        _cart_x: f32,
-        _pole_angle: f32,
-        episode_len: usize,
+        fruits_eaten: usize,
         done: bool,
     ) -> std::io::Result<bool> {
-        self.update(episode_len, done)
+        self.update(fruits_eaten, done)
     }
 }
 
-impl Drop for EpisodeGraph {
+impl Drop for FruitsGraph {
     fn drop(&mut self) {
         if self.cleaned_up {
             return;

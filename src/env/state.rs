@@ -2,86 +2,157 @@ use crate::*;
 
 // ——— State ——————————————————————————————————————————————————————————————————————————————————————————————————————————
 
-const G: f32 = 9.8;
-const M_C: f32 = 1.0;
-const M_P: f32 = 0.1;
-const L_P: f32 = 1.0;
-const F_FACTOR: f32 = 100.0;
+const WINDOW_SIZE: f32 = 100.0;
+const MIN_SNAKE_LEN: usize = 50;
+const FRUIT_RADIUS: f32 = 5.0;
+const FRUIT_SIZE_GAIN: usize = 20;
+const HEADING_CHANGE_AMOUNT: f32 = 5.0;
+const SPEED: f32 = 0.1;
+
+const WALLS: &[(f32, f32)] = &[
+    (-WINDOW_SIZE/2.0, WINDOW_SIZE/2.0),
+    (WINDOW_SIZE/2.0, WINDOW_SIZE/2.0),
+    (WINDOW_SIZE/2.0, -WINDOW_SIZE/2.0),
+    (-WINDOW_SIZE/2.0, -WINDOW_SIZE/2.0),
+    (-WINDOW_SIZE/2.0, WINDOW_SIZE/2.0),
+];
+
+const REWARD_FRUIT_INCENTIVE: f32 = 1.0;
+const PENALTY_SCARED_OF_DEATH: f32 = -10.0;
+const PENALTY_GOOFING_PENALTY: f32 = -0.01;
+
 
 pub struct State {
-    pub cart_x: f32,
-    pub cart_v: f32,
-    pub pole_angle: f32,
-    pub pole_angular_v: f32,
-    pub episode_len: usize,
+    pub heading: f32,
+    pub fruit_coords: (f32, f32),
+    pub fruits_eaten: usize,        // for internal tracking (best model checkpoint)
+    segments: VecDeque<(f32, f32)>,
+    size_to_gain: usize,
 }
 
 impl State {
     pub fn new() -> Self {
+        let mut segments = VecDeque::new();
+        let fruit_coords = Self::spawn_fruit();
+        segments.push_front((0., 0.));
         Self {
-            cart_x: 0.0,
-            cart_v: 0.0,
-            pole_angle: 0.05,
-            pole_angular_v: 0.0,
-            episode_len: 0,
+            heading: 0.0,
+            segments,
+            fruit_coords,
+            fruits_eaten: 0,
+            size_to_gain: MIN_SNAKE_LEN,
         }
     }
 
+    pub fn spawn_fruit() -> (f32, f32) {
+        let mut rng = thread_rng();
+        (rng.gen_range(-WINDOW_SIZE/2.0..WINDOW_SIZE/2.0), rng.gen_range(-WINDOW_SIZE/2.0..WINDOW_SIZE/2.0))
+    }
+
     pub fn step(&mut self, action: usize, visualization: Option<&mut dyn StateVisualization>) -> StepResult {
-        self.episode_len += 1;
-
-        // Init
-        let dir: i32 = (action as i32 + 1) * 2 - 3;
-        let f_push = dir as f32 * F_FACTOR;
-        let theta = self.pole_angle;
-        let omega = self.pole_angular_v;
-        let dt = 0.02;
-
-        // Compute
-        let temp = (f_push + M_P * L_P / 2.0 * omega.powi(2) * theta.sin()) / (M_C + M_P);
-        let temp2 = L_P / 2.0 * (4.0 / 3.0 - M_P * theta.cos().powi(2) / (M_C + M_P));
-        let alpha = (G * theta.sin() - theta.cos() * temp) / temp2;
-        let a_c = temp - M_P * L_P / 2.0 * alpha * theta.cos() / (M_C + M_P);
-
-        // Finals
-        let pole_angular_v_f = self.pole_angular_v + alpha * dt;
-        let pole_angle_f = self.pole_angle + self.pole_angular_v * dt;
-        let cart_v_f = self.cart_v + a_c * dt;
-        let cart_x_f = self.cart_x + self.cart_v * dt;
-        let done = cart_x_f.abs() > 6.0 || pole_angle_f.abs() > 45.0_f32.to_radians();
-
-        // Update
-        let next_state = vec![cart_x_f, cart_v_f, pole_angle_f, pole_angular_v_f];
-        let experience = Experience {
-            state: self.to_vec(),
-            action,
-            next_state: next_state.clone(),
-            reward: if done { -1.0 } else { 1.0 },
-            done,
+        let old_state = self.to_vec();
+        let dir = match action {
+            0=> -HEADING_CHANGE_AMOUNT,
+            1 => 0.0,
+            2 => HEADING_CHANGE_AMOUNT,
+            _ => panic!("wth action?"),
         };
-        let old_state = [&mut self.cart_x, &mut self.cart_v, &mut self.pole_angle, &mut self.pole_angular_v];
-        old_state.into_iter().zip(next_state.iter()).for_each(|(v_i, &v_f)| *v_i = v_f);
 
-        // Output & reset if done
+        // Add new head
+        self.heading = clamp_deg(self.heading + dir);
+        let (dx, dy): (f32, f32) = polar_to_cart(SPEED, self.heading);
+        let head_coords = (self.segments[0].0 + dx, self.segments[0].1 + dy);
+        self.segments.push_front(head_coords);
+
+        // Anything happened?
+        let mut done = false;
+        let mut reward = PENALTY_GOOFING_PENALTY;
+        let cur_segment: ((f32, f32), (f32, f32)) = (self.segments[0], self.segments[1]);
+
+            // collision with fruit
+        if cir_intersect(self.segments[0], self.fruit_coords, FRUIT_RADIUS) {
+            reward = REWARD_FRUIT_INCENTIVE;
+            self.fruit_coords = Self::spawn_fruit();
+            self.size_to_gain += FRUIT_SIZE_GAIN;
+            self.fruits_eaten += 1;
+        }
+
+            // collision with self
+        self.segments.iter().skip(2).collect::<Vec<_>>().windows(2).for_each(|segment| {
+            let segment = (*segment[0], *segment[1]);
+            if seg_intersect(cur_segment, segment) {
+                done = true;
+                reward = PENALTY_SCARED_OF_DEATH;
+            }
+        });
+
+            // collision with wall
+        WALLS.windows(2).for_each(|segment| {
+            let segment = (segment[0], segment[1]);
+            if seg_intersect(cur_segment, segment) {
+                done = true;
+                reward = PENALTY_SCARED_OF_DEATH;
+            }
+        });
+
+        // Pop tail
+        if self.size_to_gain == 0 {
+            self.segments.pop_back();
+        } else {
+            self.size_to_gain -= 1;
+        }
+
+        // Update, reset, output
+        let fruits_eaten = self.fruits_eaten;
         let quit = if let Some(visualization) = visualization {
             visualization
-                .update_state(cart_x_f, pole_angle_f, self.episode_len, done)
+                .update_state(fruits_eaten, done)
                 .unwrap()
         } else {
             false
         };
-        let episode_len = self.episode_len;
-        if done { *self = State::new(); }
-        StepResult { quit, experience, episode_len }
+
+        if done { *self = Self::new() }
+
+        let experience = Experience {
+            state: old_state,
+            action,
+            next_state: self.to_vec(),
+            reward,
+            done,
+        };
+
+        StepResult { quit, experience, fruits_eaten }
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
-        vec![self.cart_x, self.cart_v, self.pole_angle, self.pole_angular_v]
+        let polar_to_fruit = polar_to_point(self.segments[0], self.heading, self.fruit_coords);
+
+        let polar_to_wall = WALLS.windows(2).map(|segment| {
+            let segment = (segment[0], segment[1]);
+            polar_to_seg(self.segments[0], self.heading, segment)
+        }).min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
+
+        let polar_to_self = self.segments.iter().skip(2).collect::<Vec<_>>().windows(2).map(|segment| {
+            let segment = (*segment[0], *segment[1]);
+            polar_to_seg(self.segments[0], self.heading, segment)
+        }).min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap_or((WINDOW_SIZE * 2.0, 0.0));
+
+        vec![
+            self.heading,
+            polar_to_fruit.0,
+            polar_to_fruit.1,
+            polar_to_wall.0,
+            polar_to_wall.1,
+            polar_to_self.0,
+            polar_to_self.1,
+        ]
     }
 }
 
 pub struct StepResult {
     pub quit: bool,
     pub experience: Experience,
-    pub episode_len: usize,
+    pub fruits_eaten: usize,
 }
+
