@@ -4,7 +4,7 @@ use homemade_ml::*;
 
 fn main() {
     let mlp_hyperparameters = MlpHyperparameters {
-        lr: 0.01,
+        lr: 0.003,
         training_mode: TrainingMode::OnePass,
         dropout_rate: 0.0,
         n_inputs: 7,
@@ -17,10 +17,10 @@ fn main() {
 
     let dqn_hyperparameters = DqnHyperparameters {
         model_hyperparameters: mlp_hyperparameters,
-        memory_capacity: 10_000,
-        min_experiences: 1_000,
-        total_steps: 20_000,
-        min_eps: 0.01,
+        memory_capacity: 100_000,
+        min_experiences: 10_000,
+        decay: DecaySelector::LinearDecay { total_steps: 10_000, min_eps: 0.01 },
+        eps_min: 0.01,
         batch_size: 32,
         gamma: 0.99,
         sync_freq: 100,

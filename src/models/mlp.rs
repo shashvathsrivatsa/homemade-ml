@@ -32,7 +32,7 @@ pub struct MLP<'wsg> {
     pool: Pool,
     layers: Vec<Layer>,
     hyperparameters: &'wsg MlpHyperparameters,
-    optimizer_data: OptimizerData,
+    optimizer_data: Optimizer,
 }
 
 impl<'wsg> MLP<'wsg> {
@@ -47,13 +47,13 @@ impl<'wsg> MLP<'wsg> {
         pool.set_param_end();
 
         let optimizer_data = match hyperparameters.optimizer {
-            SGD => OptimizerData::SGD(SGD::new(hyperparameters.lr)),
+            SGD => Optimizer::SGD(SGD::new(hyperparameters.lr)),
             AdamOptimizer => {
                 let opts = layers.iter().flat_map(|l| [
                     AdamOptimizer::new(hyperparameters.lr, &pool.gpu, pool.nodes[l.w.0].len),
                     AdamOptimizer::new(hyperparameters.lr, &pool.gpu, pool.nodes[l.b.0].len),
                 ]).collect();
-                OptimizerData::Adam(opts)
+                Optimizer::Adam(opts)
             }
         };
 

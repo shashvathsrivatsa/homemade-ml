@@ -211,6 +211,7 @@ impl StateVisualization for FruitsGraph {
         _segments: &VecDeque<(f32, f32)>,
         _fruit: (f32, f32),
         fruits_eaten: usize,
+        _episode_len: usize,
         done: bool,
     ) -> std::io::Result<bool> {
         self.update(fruits_eaten, done)

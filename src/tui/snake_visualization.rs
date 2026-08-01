@@ -15,6 +15,7 @@ pub struct SnakeVisualization {
     segments: Vec<(f64, f64)>,
     fruit: (f64, f64),
     fruits_eaten: usize,
+    episode_len: usize,
     points: Vec<(f64, f64)>,
     current: (f64, f64),
     frame_interval: Duration,
@@ -52,6 +53,7 @@ impl SnakeVisualization {
             segments: Vec::new(),
             fruit: (0.0, 0.0),
             fruits_eaten: 0,
+            episode_len: 0,
             points: Vec::new(),
             current: (0.0, 0.0),
             frame_interval: Duration::from_secs_f64(1.0 / fps as f64),
@@ -65,6 +67,7 @@ impl SnakeVisualization {
         segments: &VecDeque<(f32, f32)>,
         fruit: (f32, f32),
         fruits_eaten: usize,
+        episode_len: usize,
         done: bool,
     ) -> std::io::Result<bool> {
         self.segments = segments
@@ -73,6 +76,7 @@ impl SnakeVisualization {
             .collect();
         self.fruit = (f64::from(fruit.0), f64::from(fruit.1));
         self.fruits_eaten = fruits_eaten;
+        self.episode_len = episode_len;
         self.current = (self.points.len() as f64, fruits_eaten as f64);
         if done {
             self.points.push(self.current);
@@ -180,8 +184,9 @@ impl SnakeVisualization {
                 ]));
 
             let status = Paragraph::new(format!(
-                "fruits: {}    length: {}    q: quit",
+                "fruits: {}    episode steps: {}    snake length: {}    q: quit",
                 self.fruits_eaten,
+                self.episode_len,
                 self.segments.len(),
             ))
             .alignment(Alignment::Center);
@@ -233,9 +238,10 @@ impl StateVisualization for SnakeVisualization {
         segments: &VecDeque<(f32, f32)>,
         fruit: (f32, f32),
         fruits_eaten: usize,
+        episode_len: usize,
         done: bool,
     ) -> std::io::Result<bool> {
-        self.update(segments, fruit, fruits_eaten, done)
+        self.update(segments, fruit, fruits_eaten, episode_len, done)
     }
 }
 

@@ -18,6 +18,7 @@ pub trait StateVisualization {
         segments: &VecDeque<(f32, f32)>,
         fruit: (f32, f32),
         fruits_eaten: usize,
+        episode_len: usize,
         done: bool,
     ) -> std::io::Result<bool>;
 }

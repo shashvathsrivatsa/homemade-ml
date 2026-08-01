@@ -25,9 +25,12 @@ const REWARD_APPROACHING_FRUIT_SCALE: f32 = 0.1;
 pub struct State {
     pub heading: f32,
     pub fruit_coords: (f32, f32),
-    pub fruits_eaten: usize,        // for internal tracking (best model checkpoint)
     segments: VecDeque<(f32, f32)>,
     size_to_gain: usize,
+
+    // internal tracking
+    pub fruits_eaten: usize,
+    pub episode_len: usize,
 }
 
 impl State {
@@ -41,16 +44,20 @@ impl State {
             fruit_coords,
             fruits_eaten: 0,
             size_to_gain: MIN_SNAKE_LEN,
+            episode_len: 0,
         }
     }
 
     pub fn spawn_fruit() -> (f32, f32) {
         let mut rng = thread_rng();
-        (rng.gen_range(-WINDOW_SIZE/2.0..WINDOW_SIZE/2.0), rng.gen_range(-WINDOW_SIZE/2.0..WINDOW_SIZE/2.0))
+        let lower_bound = -WINDOW_SIZE/2.0 + FRUIT_RADIUS / 2.0;
+        let upper_bound = WINDOW_SIZE/2.0 - FRUIT_RADIUS / 2.0;
+        (rng.gen_range(lower_bound..upper_bound), rng.gen_range(lower_bound..upper_bound))
     }
 
     pub fn step(&mut self, action: usize, visualization: Option<&mut dyn StateVisualization>) -> StepResult {
         let old_state = self.to_vec();
+        self.episode_len += 1;
         let dir = match action {
             0=> -HEADING_CHANGE_AMOUNT,
             1 => 0.0,
@@ -106,7 +113,13 @@ impl State {
         let fruits_eaten = self.fruits_eaten;
         let quit = if let Some(visualization) = visualization {
             visualization
-                .update_state(&self.segments, self.fruit_coords, fruits_eaten, done)
+                .update_state(
+                    &self.segments,
+                    self.fruit_coords,
+                    fruits_eaten,
+                    self.episode_len,
+                    done,
+                )
                 .unwrap()
         } else {
             false
@@ -155,4 +168,3 @@ pub struct StepResult {
     pub experience: Experience,
     pub fruits_eaten: usize,
 }
-

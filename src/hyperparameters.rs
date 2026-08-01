@@ -13,7 +13,7 @@ pub struct MlpHyperparameters {
     pub hidden_activation: Activation,
     pub output_activation: Activation,
     pub loss_function: LossFunction,
-    pub optimizer: Optimizer,
+    pub optimizer: OptimizerSelector,
 }
 
 pub enum TrainingMode {
@@ -32,8 +32,8 @@ pub struct DqnHyperparameters {
     pub model_hyperparameters: MlpHyperparameters,
     pub memory_capacity: usize,
     pub min_experiences: usize,
-    pub total_steps: usize,
-    pub min_eps: f32,
+    pub decay: DecaySelector,
+    pub eps_min: f32,
     pub batch_size: usize,
     pub gamma: f32,
     pub sync_freq: usize,

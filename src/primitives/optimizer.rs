@@ -2,15 +2,15 @@ use crate::*;
 
 // ——— Optimizer —————————————————————————————————————————————————————————————————————————————————————————————————————
 
-pub enum Optimizer {
+pub enum OptimizerSelector {
     SGD,
     AdamOptimizer,
 }
 
-pub use Optimizer::*;
+pub use OptimizerSelector::*;
 
 
-pub enum OptimizerData {
+pub enum Optimizer {
     SGD(SGD),
     Adam(Vec<AdamOptimizer>),
 }

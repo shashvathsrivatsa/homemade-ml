@@ -5,14 +5,15 @@ use crate::*;
 pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
-    let mut decay = LinearDecay::new(hyperparameters.total_steps, hyperparameters.min_eps);
+    // let mut decay: Decay = LinearDecay::new(hyperparameters.decay.eps_total_steps, hyperparameters.eps_min);
+    let mut decay: Decay = hyperparameters.decay.into_decay();
     // let mut graph = FruitsGraph::new(10).unwrap();
     let mut graph = SnakeVisualization::new(10).unwrap();
     let mut state = State::new();
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
     let mut best_fruits_eaten = 0;
 
-    fast_model.load(true);
+    // fast_model.load(true);
     fast_model.copy_weights_to(&mut slow_model);
 
     // Warmup (populate memory)

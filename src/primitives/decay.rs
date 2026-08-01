@@ -1,6 +1,31 @@
 use crate::*;
 
-// ——— Loss ———————————————————————————————————————————————————————————————————————————————————————————————————————————
+// ——— Decay ——————————————————————————————————————————————————————————————————————————————————————————————————————————
+
+pub enum DecaySelector {
+    LinearDecay { total_steps: usize, min_eps: f32 }
+}
+
+impl DecaySelector {
+    pub fn into_decay(&self) -> Decay {
+        match self {
+            DecaySelector::LinearDecay { total_steps, min_eps } => Decay::LinearDecay(LinearDecay::new(*total_steps, *min_eps)),
+        }
+    }
+}
+
+pub enum Decay {
+    LinearDecay(LinearDecay),
+}
+
+impl Decay {
+    pub fn explore(&mut self) -> bool {
+        match self {
+            Decay::LinearDecay(d) => d.explore(),
+        }
+    }
+}
+
 
 pub struct LinearDecay {
     total_steps: f32,
