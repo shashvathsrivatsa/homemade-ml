@@ -19,7 +19,7 @@ fn main() {
         model_hyperparameters: mlp_hyperparameters,
         memory_capacity: 100_000,
         min_experiences: 10_000,
-        decay: DecaySelector::LinearDecay { total_steps: 10_000, min_eps: 0.01 },
+        decay: FlatDecay { min_eps: 0.2 },
         eps_min: 0.01,
         batch_size: 32,
         gamma: 0.99,

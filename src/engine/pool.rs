@@ -112,14 +112,14 @@ impl Pool {
     }
 
     // —— Update ———————————————————————————————————————————————————————————————————————————
-    pub fn update_weights(&mut self, opt: &mut OptimizerData) {
+    pub fn update_weights(&mut self, opt: &mut Optimizer) {
         for i in 0..self.param_end {
             match opt {
-                OptimizerData::SGD(sgd) => {
+                Optimizer::SGD(sgd) => {
                     let node = &mut self.nodes[i];
                     sgd.step(&self.gpu, node);
                 }
-                OptimizerData::Adam(opts) => {
+                Optimizer::Adam(opts) => {
                     let node = &mut self.nodes[i];
                     let adam = &mut opts[i];
                     adam.step(&self.gpu, node);

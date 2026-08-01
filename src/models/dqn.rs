@@ -5,7 +5,6 @@ use crate::*;
 pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
-    // let mut decay: Decay = LinearDecay::new(hyperparameters.decay.eps_total_steps, hyperparameters.eps_min);
     let mut decay: Decay = hyperparameters.decay.into_decay();
     // let mut graph = FruitsGraph::new(10).unwrap();
     let mut graph = SnakeVisualization::new(10).unwrap();
