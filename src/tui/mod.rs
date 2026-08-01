@@ -20,5 +20,5 @@ pub trait StateVisualization {
         fruits_eaten: usize,
         episode_len: usize,
         done: bool,
-    ) -> std::io::Result<bool>;
+    ) -> std::io::Result<Option<char>>;
 }

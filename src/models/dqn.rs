@@ -12,14 +12,14 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
     let mut best_fruits_eaten = 0;
 
-    // fast_model.load(true);
+    fast_model.load(true);
     fast_model.copy_weights_to(&mut slow_model);
 
     // Warmup (populate memory)
     for _ in 0..hyperparameters.min_experiences {
         let action = random::<usize>() % 3;
         let step_result = state.step(action, Some(&mut graph));
-        if step_result.quit { return; }
+        if matches!(step_result.key_pressed, Some('q' | '\u{3}')) { return; }
         memory.push(step_result.experience);
     }
 
@@ -28,10 +28,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     loop {
         step += 1;
 
-        // Pick action (initially random, eventually purely best)
-        let explore = decay.explore();
-
-        let action = if explore {
+        let action = if decay.explore() {
             random::<usize>() % 3
         } else {
             let y_pred = fast_model.eval(&state.to_vec());
@@ -42,7 +39,15 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
 
         // Step environment
         let step_result = state.step(action, Some(&mut graph));
-        if step_result.quit { return; };
+
+        if let Some(key) = step_result.key_pressed {
+            match key {
+                'q' | '\u{3}' => return,
+                's' => { fast_model.save(true); return; }
+                _ => ()
+            }
+        };
+
         if step_result.experience.done && step_result.fruits_eaten > best_fruits_eaten {
             best_fruits_eaten = step_result.fruits_eaten;
             fast_model.save(true);
@@ -99,6 +104,6 @@ pub fn test_dqn(hyperparameters: DqnHyperparameters) {
         // Step environment
         let step_result = state.step(action, Some(&mut visualization));
         // std::thread::sleep(Duration::from_millis(100));
-        if step_result.quit || step_result.experience.done { return; }
+        if matches!(step_result.key_pressed, Some('q' | '\u{3}')) || step_result.experience.done { return; }
     }
 }

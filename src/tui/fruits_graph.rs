@@ -57,7 +57,11 @@ impl FruitsGraph {
         })
     }
 
-    pub fn update(&mut self, fruits_eaten: usize, done: bool) -> std::io::Result<bool> {
+    pub fn update(
+        &mut self,
+        fruits_eaten: usize,
+        done: bool,
+    ) -> std::io::Result<Option<char>> {
         let episode = self.points.len();
         self.current = (episode as f64, fruits_eaten as f64);
 
@@ -73,7 +77,7 @@ impl FruitsGraph {
             self.last_render = Some(Instant::now());
         }
 
-        self.check_quit()
+        self.check_key()
     }
 
     fn render(&mut self, show_current: bool) -> std::io::Result<()> {
@@ -147,23 +151,26 @@ impl FruitsGraph {
         Ok(())
     }
 
-    fn check_quit(&mut self) -> std::io::Result<bool> {
+    fn check_key(&mut self) -> std::io::Result<Option<char>> {
         while event::poll(Duration::ZERO)? {
             if let Event::Key(key) = event::read()?
                 && key.kind == KeyEventKind::Press
-                && (key.code == KeyCode::Char('q')
-                    || key.code == KeyCode::Char('c')
+            {
+                if let KeyCode::Char(character) = key.code {
+                    let character = if character == 'c'
                         && key
                             .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL))
-            {
-                self.cleaned_up = true;
-                let _ = disable_raw_mode();
-                let _ = execute!(stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
-                return Ok(true);
+                            .contains(crossterm::event::KeyModifiers::CONTROL)
+                    {
+                        '\u{3}'
+                    } else {
+                        character
+                    };
+                    return Ok(Some(character));
+                }
             }
         }
-        Ok(false)
+        Ok(None)
     }
 
     pub fn save_png(&self, path: impl AsRef<Path>) -> Result<(), Box<dyn Error>> {
@@ -213,7 +220,7 @@ impl StateVisualization for FruitsGraph {
         fruits_eaten: usize,
         _episode_len: usize,
         done: bool,
-    ) -> std::io::Result<bool> {
+    ) -> std::io::Result<Option<char>> {
         self.update(fruits_eaten, done)
     }
 }

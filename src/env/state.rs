@@ -111,7 +111,7 @@ impl State {
 
         // Update, reset, output
         let fruits_eaten = self.fruits_eaten;
-        let quit = if let Some(visualization) = visualization {
+        let key_pressed: Option<char> = if let Some(visualization) = visualization {
             visualization
                 .update_state(
                     &self.segments,
@@ -122,7 +122,7 @@ impl State {
                 )
                 .unwrap()
         } else {
-            false
+            None
         };
 
         if done { *self = Self::new() }
@@ -135,7 +135,7 @@ impl State {
             done,
         };
 
-        StepResult { quit, experience, fruits_eaten }
+        StepResult { key_pressed, experience, fruits_eaten }
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
@@ -164,7 +164,7 @@ impl State {
 }
 
 pub struct StepResult {
-    pub quit: bool,
+    pub key_pressed: Option<char>,
     pub experience: Experience,
     pub fruits_eaten: usize,
 }

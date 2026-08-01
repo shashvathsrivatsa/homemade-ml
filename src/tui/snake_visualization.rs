@@ -69,7 +69,7 @@ impl SnakeVisualization {
         fruits_eaten: usize,
         episode_len: usize,
         done: bool,
-    ) -> std::io::Result<bool> {
+    ) -> std::io::Result<Option<char>> {
         self.segments = segments
             .iter()
             .map(|&(x, y)| (f64::from(x), f64::from(y)))
@@ -90,7 +90,7 @@ impl SnakeVisualization {
             self.last_render = Some(Instant::now());
         }
 
-        self.check_quit()
+        self.check_key()
     }
 
     fn render(&mut self) -> std::io::Result<()> {
@@ -199,24 +199,27 @@ impl SnakeVisualization {
         Ok(())
     }
 
-    fn check_quit(&mut self) -> std::io::Result<bool> {
+    fn check_key(&mut self) -> std::io::Result<Option<char>> {
         while event::poll(Duration::ZERO)? {
             if let Event::Key(key) = event::read()?
                 && key.kind == KeyEventKind::Press
-                && (key.code == KeyCode::Char('q')
-                    || key.code == KeyCode::Char('c')
+            {
+                if let KeyCode::Char(character) = key.code {
+                    let character = if character == 'c'
                         && key
                             .modifiers
-                            .contains(crossterm::event::KeyModifiers::CONTROL))
-            {
-                self.cleaned_up = true;
-                let _ = disable_raw_mode();
-                let _ = execute!(stdout(), LeaveAlternateScreen, crossterm::cursor::Show);
-                return Ok(true);
+                            .contains(crossterm::event::KeyModifiers::CONTROL)
+                    {
+                        '\u{3}'
+                    } else {
+                        character
+                    };
+                    return Ok(Some(character));
+                }
             }
         }
 
-        Ok(false)
+        Ok(None)
     }
 }
 
@@ -240,7 +243,7 @@ impl StateVisualization for SnakeVisualization {
         fruits_eaten: usize,
         episode_len: usize,
         done: bool,
-    ) -> std::io::Result<bool> {
+    ) -> std::io::Result<Option<char>> {
         self.update(segments, fruit, fruits_eaten, episode_len, done)
     }
 }
