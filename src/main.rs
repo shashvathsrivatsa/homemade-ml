@@ -7,7 +7,7 @@ fn main() {
         lr: 0.003,
         training_mode: TrainingMode::OnePass,
         dropout_rate: 0.0,
-        n_inputs: 7,
+        n_inputs: 13,
         n_layers: vec![64, 3],
         hidden_activation: Relu,
         output_activation: NoActivation,

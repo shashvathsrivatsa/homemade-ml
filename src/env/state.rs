@@ -20,8 +20,6 @@ const WALLS: &[(f32, f32)] = &[
 const REWARD_FRUIT_INCENTIVE: f32 = 2.0;
 const PENALTY_HIT_OBSTACLE: f32 = -1.0;
 const REWARD_APPROACHING_FRUIT: f32 = 0.1;
-const PENALTY_APPROACHING_BODY: f32 = 0.1;
-const PENALTY_APPROACHING_WALL: f32 = 0.1;
 
 
 pub struct State {
@@ -142,29 +140,38 @@ impl State {
     }
 
     pub fn to_vec(&self) -> Vec<f32> {
+        let rays = &[-90.0, -45.0, 0.0, 45.0, 90.0];
+
+        // TODO: does it even need this? or is proximity to fruit already handled in the continuous reward
         let polar_to_fruit = polar_to_point(self.segments[0], self.heading, self.fruit_coords);
 
-        let polar_to_wall = WALLS.windows(2).map(|segment| {
-            let segment = (segment[0], segment[1]);
-            polar_to_seg(self.segments[0], self.heading, segment)
-        }).min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap();
+        let rays_to_wall: Vec<f32> = rays.iter().map(|ray| {
+            let heading = clamp_deg(self.heading + ray);
+            let wall_segments = WALLS.windows(2).map(|w| (w[0], w[1]));
+            raycast(self.segments[0], heading, WINDOW_SIZE * 2.0, wall_segments)
+        }).collect();
 
-        let polar_to_self = self.segments.iter().skip(2).collect::<Vec<_>>().windows(2)
-            .map(|segment| {
-                let segment = (*segment[0], *segment[1]);
-                polar_to_seg(self.segments[0], self.heading, segment)
-            })
-            .filter(|(_, theta)| *theta < 90.0 || *theta > 270.0)
-            .min_by(|a, b| a.0.partial_cmp(&b.0).unwrap()).unwrap_or((WINDOW_SIZE * 2.0, 0.0));
+        let rays_to_body: Vec<f32> = rays.iter().map(|ray| {
+            let heading = clamp_deg(self.heading + ray);
+            let body_segments = self.segments.iter().skip(2).collect::<Vec<_>>();
+            let body_segments = body_segments.windows(2).map(|w| (*w[0], *w[1]));
+            raycast(self.segments[0], heading, WINDOW_SIZE * 2.0, body_segments)
+        }).collect();
 
         vec![
             self.heading,
             polar_to_fruit.0,
             polar_to_fruit.1,
-            polar_to_wall.0,
-            polar_to_wall.1,
-            polar_to_self.0,
-            polar_to_self.1,
+            rays_to_wall[0],
+            rays_to_wall[1],
+            rays_to_wall[2],
+            rays_to_wall[3],
+            rays_to_wall[4],
+            rays_to_body[0],
+            rays_to_body[1],
+            rays_to_body[2],
+            rays_to_body[3],
+            rays_to_body[4],
         ]
     }
 }

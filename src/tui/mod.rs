@@ -12,9 +12,9 @@ pub use cart_pole_visualizaiton::*;
 pub mod snake_visualization;
 pub use snake_visualization::*;
 
-#[path = "../state_test/mod.rs"]
-mod state_test;
-pub use state_test::*;
+// #[path = "../state_test/mod.rs"]
+// mod state_test;
+// pub use state_test::*;
 
 pub trait StateVisualization {
     fn update_state(

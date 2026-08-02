@@ -12,7 +12,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
     let mut best_fruits_eaten = 0;
 
-    fast_model.load(true);
+    // fast_model.load(true);
     fast_model.copy_weights_to(&mut slow_model);
 
     // Warmup (populate memory)

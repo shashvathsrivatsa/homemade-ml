@@ -33,3 +33,18 @@ pub fn polar_to_seg(
     polar_to_point(p1, heading, closest)
 }
 
+pub fn raycast(
+    origin: (f32, f32),
+    heading: f32,
+    max_dist: f32,
+    segments: impl Iterator<Item = ((f32, f32), (f32, f32))>,
+) -> f32 {
+    let (dx, dy) = polar_to_cart(max_dist, heading);
+    let ray = (origin, (origin.0 + dx, origin.1 + dy));
+    
+    segments
+        .filter_map(|seg| seg_intersect_dist(ray, seg))
+        .fold(f32::MAX, f32::min)
+        .min(max_dist)
+}
+
