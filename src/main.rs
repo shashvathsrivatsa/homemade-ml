@@ -19,10 +19,10 @@ fn main() {
         model_hyperparameters: mlp_hyperparameters,
         memory_capacity: 100_000,
         min_experiences: 10_000,
-        decay: FlatDecay { min_eps: 0.2 },
+        decay: FlatDecay { min_eps: 0.1 },
         batch_size: 512,
         gamma: 0.99,
-        sync_freq: 100,
+        sync_freq: 1000,
     };
 
     dqn_train(dqn_hyperparameters);

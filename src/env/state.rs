@@ -3,11 +3,11 @@ use crate::*;
 // ——— State ——————————————————————————————————————————————————————————————————————————————————————————————————————————
 
 const WINDOW_SIZE: f32 = 100.0;
-const MIN_SNAKE_LEN: usize = 50;
+const SPEED: f32 = 1.0;
+const MIN_SNAKE_LEN: usize = 5 * (1.0 / SPEED) as usize;
+const FRUIT_SIZE_GAIN: usize = 2 * (1.0 / SPEED) as usize;
 const FRUIT_RADIUS: f32 = 2.5;
-const FRUIT_SIZE_GAIN: usize = 20;
 const HEADING_CHANGE_AMOUNT: f32 = 20.0;
-const SPEED: f32 = 0.1;
 
 const WALLS: &[(f32, f32)] = &[
     (-WINDOW_SIZE/2.0, WINDOW_SIZE/2.0),
