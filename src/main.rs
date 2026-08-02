@@ -21,7 +21,7 @@ fn main() {
         min_experiences: 10_000,
         decay: FlatDecay { min_eps: 0.2 },
         eps_min: 0.01,
-        batch_size: 32,
+        batch_size: 512,
         gamma: 0.99,
         sync_freq: 100,
     };
