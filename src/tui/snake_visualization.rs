@@ -13,6 +13,9 @@ const WORLD_MAX: f64 = WORLD_SIZE / 2.0;
 const FRUIT_RADIUS: f64 = 2.5;
 const MOVING_AVG_WINDOW: usize = 50;
 const KEY_REPEAT_TIMEOUT: Duration = Duration::from_millis(50);
+const FRUIT_REWARD: f32 = 2.0;
+const COLLISION_REWARD: f32 = -1.0;
+const APPROACH_REWARD_SCALE: f32 = 0.1;
 
 pub struct SnakeVisualization {
     terminal: Terminal<CrosstermBackend<Stdout>>,
@@ -21,6 +24,7 @@ pub struct SnakeVisualization {
     fruit: (f64, f64),
     fruits_eaten: usize,
     episode_len: usize,
+    current_reward: f32,
     points: Vec<(f64, f64)>,
     current: (f64, f64),
     frame_interval: Duration,
@@ -85,6 +89,7 @@ impl SnakeVisualization {
             fruit: (0.0, 0.0),
             fruits_eaten: 0,
             episode_len: 0,
+            current_reward: 0.0,
             points: Vec::new(),
             current: (0.0, 0.0),
             frame_interval: Duration::from_secs_f64(1.0 / fps as f64),
@@ -105,6 +110,19 @@ impl SnakeVisualization {
         episode_len: usize,
         done: bool,
     ) -> std::io::Result<Option<char>> {
+        self.current_reward = if done {
+            COLLISION_REWARD
+        } else if fruits_eaten > self.fruits_eaten {
+            FRUIT_REWARD
+        } else if segments.len() >= 2 {
+            let previous_head = segments[1];
+            let current_head = segments[0];
+            let previous_distance = (previous_head.0 - fruit.0).hypot(previous_head.1 - fruit.1);
+            let current_distance = (current_head.0 - fruit.0).hypot(current_head.1 - fruit.1);
+            (previous_distance - current_distance) * APPROACH_REWARD_SCALE
+        } else {
+            0.0
+        };
         self.state = state;
         self.segments = segments
             .iter()
@@ -163,6 +181,11 @@ impl SnakeVisualization {
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(vertical_areas[0]);
             let game_area = centered_game_area(main_areas[1]);
+            // A Braille canvas has 2 horizontal by 4 vertical drawable dots per
+            // terminal cell. These dimensions let us measure the stroke in dots
+            // instead of world units, keeping its width independent of direction.
+            let dot_width = WORLD_SIZE / (f64::from(game_area.width.max(1)) * 2.0);
+            let dot_height = WORLD_SIZE / (f64::from(game_area.height.max(1)) * 4.0);
 
             let canvas = Canvas::default()
                 .marker(symbols::Marker::Braille)
@@ -177,12 +200,68 @@ impl SnakeVisualization {
                         color: Color::DarkGray,
                     });
 
-                    context.draw(&Circle {
-                        x: self.fruit.0,
-                        y: self.fruit.1,
-                        radius: FRUIT_RADIUS,
-                        color: Color::Red,
-                    });
+                    // Stem first: apple (drawn after) repaints shared cells red,
+                    // leaving only the above-apple portion of the stem green.
+                    context.draw(&CanvasLine::new(
+                        self.fruit.0,
+                        self.fruit.1 + FRUIT_RADIUS,
+                        self.fruit.0 + dot_width,
+                        self.fruit.1 + FRUIT_RADIUS + dot_height * 4.0,
+                        Color::Green,
+                    ));
+
+                    // Filled apple: concentric rings from center to edge
+                    for i in 1..=6u8 {
+                        context.draw(&Circle {
+                            x: self.fruit.0,
+                            y: self.fruit.1,
+                            radius: FRUIT_RADIUS * f64::from(i) / 6.0,
+                            color: Color::Red,
+                        });
+                    }
+
+                    // Draw the two fringe edges perpendicular to each segment.
+                    // Unlike axis-aligned copies of the whole path, this gives
+                    // horizontal, vertical, and diagonal sections equal width.
+                    for segment in self.segments.windows(2) {
+                        let dx_dots = (segment[1].0 - segment[0].0) / dot_width;
+                        let dy_dots = (segment[1].1 - segment[0].1) / dot_height;
+                        let length_dots = dx_dots.hypot(dy_dots);
+                        if length_dots == 0.0 {
+                            continue;
+                        }
+                        let normal_x = -dy_dots / length_dots * dot_width;
+                        let normal_y = dx_dots / length_dots * dot_height;
+
+                        for side in [-1.0, 1.0] {
+                            context.draw(&CanvasLine::new(
+                                segment[0].0 + normal_x * side,
+                                segment[0].1 + normal_y * side,
+                                segment[1].0 + normal_x * side,
+                                segment[1].1 + normal_y * side,
+                                Color::Green,
+                            ));
+                        }
+                    }
+
+                    // Round caps also close the wedges where adjacent segments
+                    // have different normals, without making turns extra thick.
+                    for &(x, y) in &self.segments {
+                        for (offset_x, offset_y) in [
+                            (-dot_width, 0.0),
+                            (dot_width, 0.0),
+                            (0.0, -dot_height),
+                            (0.0, dot_height),
+                        ] {
+                            context.draw(&CanvasLine::new(
+                                x + offset_x,
+                                y + offset_y,
+                                x + offset_x,
+                                y + offset_y,
+                                Color::Green,
+                            ));
+                        }
+                    }
 
                     for segment in self.segments.windows(2) {
                         context.draw(&CanvasLine::new(
@@ -192,6 +271,27 @@ impl SnakeVisualization {
                             segment[1].1,
                             Color::Green,
                         ));
+                    }
+
+                    if self.segments.len() >= 2 {
+                        let head = self.segments[0];
+                        let neck = self.segments[1];
+                        let dx_dots = (head.0 - neck.0) / dot_width;
+                        let dy_dots = (head.1 - neck.1) / dot_height;
+                        let length_dots = dx_dots.hypot(dy_dots);
+                        if length_dots > 0.0 {
+                            let norm_dx = dx_dots / length_dots;
+                            let norm_dy = dy_dots / length_dots;
+                            let fwd_x = norm_dx * dot_width;
+                            let fwd_y = norm_dy * dot_height;
+                            let perp_x = -norm_dy * dot_width;
+                            let perp_y = norm_dx * dot_height;
+                            for side in [-0.7_f64, 0.7] {
+                                let eye_x = head.0 + fwd_x * 0.5 + perp_x * side;
+                                let eye_y = head.1 + fwd_y * 0.5 + perp_y * side;
+                                context.draw(&CanvasLine::new(eye_x, eye_y, eye_x, eye_y, Color::White));
+                            }
+                        }
                     }
                 });
 
@@ -224,8 +324,9 @@ impl SnakeVisualization {
                 ]));
 
             let status = Paragraph::new(format!(
-                "fruits: {}    episode steps: {}    snake length: {}\nstate: {:.3?}",
+                "fruits: {}    reward: {:+.6}    episode steps: {}    snake length: {}\nstate: {:.3?}",
                 self.fruits_eaten,
+                self.current_reward,
                 self.episode_len,
                 self.segments.len(),
                 self.state,
