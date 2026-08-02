@@ -19,14 +19,14 @@ fn main() {
         model_hyperparameters: mlp_hyperparameters,
         memory_capacity: 100_000,
         min_experiences: 10_000,
-        decay: FlatDecay { min_eps: 0.05 },
+        decay: FlatDecay { min_eps: 0.00 },
         batch_size: 512,
         gamma: 0.99,
         sync_freq: 1000,
     };
 
-    dqn_train(dqn_hyperparameters);
-    // dqn_test(dqn_hyperparameters);
+    // dqn_train(dqn_hyperparameters);
+    dqn_test(dqn_hyperparameters);
     // play_snake().unwrap();
 }
 

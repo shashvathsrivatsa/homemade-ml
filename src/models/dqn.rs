@@ -103,6 +103,11 @@ pub fn dqn_test(hyperparameters: DqnHyperparameters) {
         // Step environment
         let step_result = state.step(action, Some(&mut graph));
         std::thread::sleep(Duration::from_millis(30));
-        if matches!(step_result.key_pressed, Some('q' | '\u{3}')) || step_result.experience.done { return; }
+
+        // Stop
+        if matches!(step_result.key_pressed, Some('q') | Some('\u{3}')) || step_result.experience.done  {
+            println!("Fruits eaten: {}", step_result.fruits_eaten);
+            return;
+        }
     }
 }
