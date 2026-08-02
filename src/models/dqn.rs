@@ -16,7 +16,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
 
     // Warmup (populate memory)
     for _ in 0..hyperparameters.min_experiences {
-        let action = random::<usize>() % 2;
+        let action = random::<usize>() % hyperparameters.model_hyperparameters.n_layers.last().unwrap();
         let step_result = state.step(action, None);
         if matches!(step_result.key_pressed, Some('q' | '\u{3}')) { return; }
         memory.push(step_result.experience);
@@ -28,7 +28,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
         step += 1;
 
         let action = if decay.explore() {
-            random::<usize>() % 2
+            random::<usize>() % hyperparameters.model_hyperparameters.n_layers.last().unwrap()
         } else {
             let y_pred = fast_model.eval(&state.to_vec());
             y_pred.iter().enumerate()
@@ -102,11 +102,12 @@ pub fn dqn_test(hyperparameters: DqnHyperparameters) {
 
         // Step environment
         let step_result = state.step(action, Some(&mut graph));
-        std::thread::sleep(Duration::from_millis(30));
+        std::thread::sleep(Duration::from_millis(20));
 
         // Stop
         if matches!(step_result.key_pressed, Some('q') | Some('\u{3}')) || step_result.experience.done  {
-            println!("Fruits eaten: {}", step_result.fruits_eaten);
+            drop(graph);
+            println!("{} 🍎", step_result.fruits_eaten);
             return;
         }
     }

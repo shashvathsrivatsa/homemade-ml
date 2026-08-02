@@ -59,12 +59,12 @@ impl State {
         let old_state = self.to_vec();
         self.episode_len += 1;
         let dir = match action {
-            0=> -HEADING_CHANGE_AMOUNT,
-            1 => HEADING_CHANGE_AMOUNT,
-            2=> -HEADING_CHANGE_AMOUNT * 2.0,
-            3 => HEADING_CHANGE_AMOUNT * 2.0,
-            4=> -HEADING_CHANGE_AMOUNT * 3.0,
-            5 => HEADING_CHANGE_AMOUNT * 3.0,
+            0 => -HEADING_CHANGE_AMOUNT,
+            1 =>  HEADING_CHANGE_AMOUNT,
+            2 => -HEADING_CHANGE_AMOUNT * 2.0,
+            3 =>  HEADING_CHANGE_AMOUNT * 2.0,
+            4 => -HEADING_CHANGE_AMOUNT * 3.0,
+            5 =>  HEADING_CHANGE_AMOUNT * 3.0,
             _ => panic!("wth action?"),
         };
 
