@@ -11,12 +11,12 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut state = State::new();
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
 
-    fast_model.load(true);
+    // fast_model.load(true);
     fast_model.copy_weights_to(&mut slow_model);
 
     // Warmup (populate memory)
     for _ in 0..hyperparameters.min_experiences {
-        let action = random::<usize>() % 3;
+        let action = random::<usize>() % 2;
         let step_result = state.step(action, None);
         if matches!(step_result.key_pressed, Some('q' | '\u{3}')) { return; }
         memory.push(step_result.experience);
@@ -28,7 +28,7 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
         step += 1;
 
         let action = if decay.explore() {
-            random::<usize>() % 3
+            random::<usize>() % 2
         } else {
             let y_pred = fast_model.eval(&state.to_vec());
             y_pred.iter().enumerate()

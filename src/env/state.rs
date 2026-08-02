@@ -6,7 +6,7 @@ const WINDOW_SIZE: f32 = 100.0;
 const MIN_SNAKE_LEN: usize = 50;
 const FRUIT_RADIUS: f32 = 2.5;
 const FRUIT_SIZE_GAIN: usize = 20;
-const HEADING_CHANGE_AMOUNT: f32 = 5.0;
+const HEADING_CHANGE_AMOUNT: f32 = 20.0;
 const SPEED: f32 = 0.1;
 
 const WALLS: &[(f32, f32)] = &[
@@ -60,8 +60,8 @@ impl State {
         self.episode_len += 1;
         let dir = match action {
             0=> -HEADING_CHANGE_AMOUNT,
-            1 => 0.0,
-            2 => HEADING_CHANGE_AMOUNT,
+            // 1 => 0.0,
+            1 => HEADING_CHANGE_AMOUNT,
             _ => panic!("wth action?"),
         };
 

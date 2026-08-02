@@ -33,7 +33,6 @@ pub struct DqnHyperparameters {
     pub memory_capacity: usize,
     pub min_experiences: usize,
     pub decay: DecaySelector,
-    pub eps_min: f32,
     pub batch_size: usize,
     pub gamma: f32,
     pub sync_freq: usize,
