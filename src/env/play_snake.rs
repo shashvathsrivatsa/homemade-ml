@@ -1,4 +1,4 @@
-use crate::{SnakeVisualization, State};
+use crate::{SnakeTestGraph, State};
 use std::{io, thread, time::{Duration, Instant}};
 
 const TICKS_PER_SECOND: u32 = 240;
@@ -11,7 +11,7 @@ const RENDER_FRAMES_PER_SECOND: u32 = 60;
 /// Press `q` or Ctrl+C to exit.
 pub fn play_snake() -> io::Result<()> {
     let mut state = State::new();
-    let mut visualization = SnakeVisualization::new(RENDER_FRAMES_PER_SECOND)?;
+    let mut visualization = SnakeTestGraph::new(RENDER_FRAMES_PER_SECOND)?;
     let tick_duration = Duration::from_secs_f64(1.0 / f64::from(TICKS_PER_SECOND));
     let mut next_tick = Instant::now();
     let mut action = 1;

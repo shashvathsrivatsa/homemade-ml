@@ -17,7 +17,7 @@ const FRUIT_REWARD: f32 = 2.0;
 const COLLISION_REWARD: f32 = -1.0;
 const APPROACH_REWARD_SCALE: f32 = 0.1;
 
-pub struct SnakeVisualization {
+pub struct SnakeGraph<const SHOW_CHART: bool> {
     terminal: Terminal<CrosstermBackend<Stdout>>,
     state: Vec<f32>,
     segments: Vec<(f64, f64)>,
@@ -35,7 +35,14 @@ pub struct SnakeVisualization {
     cleaned_up: bool,
 }
 
-impl SnakeVisualization {
+pub type SnakeTrainGraph = SnakeGraph<true>;
+pub type SnakeTestGraph = SnakeGraph<false>;
+
+// Keep existing callers source-compatible; the old name retains its original
+// chart + game behavior.
+pub type SnakeVisualization = SnakeTrainGraph;
+
+impl<const SHOW_CHART: bool> SnakeGraph<SHOW_CHART> {
     pub fn new(fps: u32) -> std::io::Result<Self> {
         if fps == 0 {
             return Err(std::io::Error::new(
@@ -180,7 +187,11 @@ impl SnakeVisualization {
                 .direction(Direction::Horizontal)
                 .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .split(vertical_areas[0]);
-            let game_area = centered_game_area(main_areas[1]);
+            let game_area = if SHOW_CHART {
+                centered_game_area(main_areas[1])
+            } else {
+                centered_game_area(vertical_areas[0])
+            };
             // A Braille canvas has 2 horizontal by 4 vertical drawable dots per
             // terminal cell. These dimensions let us measure the stroke in dots
             // instead of world units, keeping its width independent of direction.
@@ -334,7 +345,9 @@ impl SnakeVisualization {
             .alignment(Alignment::Center);
 
             frame.render_widget(canvas, game_area);
-            frame.render_widget(chart, main_areas[0]);
+            if SHOW_CHART {
+                frame.render_widget(chart, main_areas[0]);
+            }
             frame.render_widget(status, vertical_areas[1]);
         })?;
 
@@ -393,7 +406,7 @@ fn centered_game_area(area: Rect) -> Rect {
     }
 }
 
-impl StateVisualization for SnakeVisualization {
+impl<const SHOW_CHART: bool> StateVisualization for SnakeGraph<SHOW_CHART> {
     fn update_state(
         &mut self,
         state: Vec<f32>,
@@ -407,7 +420,7 @@ impl StateVisualization for SnakeVisualization {
     }
 }
 
-impl Drop for SnakeVisualization {
+impl<const SHOW_CHART: bool> Drop for SnakeGraph<SHOW_CHART> {
     fn drop(&mut self) {
         if self.cleaned_up {
             return;

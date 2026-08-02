@@ -6,10 +6,10 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut fast_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut slow_model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut decay: Decay = hyperparameters.decay.into_decay();
-    // let mut graph = FruitsGraph::new(10).unwrap();
-    let mut graph = SnakeVisualization::new(60).unwrap();
+    let mut graph = SnakeTrainGraph::new(60).unwrap();
     let mut state = State::new();
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
+    let mut best_fruits_eaten = 0;
 
     // fast_model.load(true);
     fast_model.copy_weights_to(&mut slow_model);
@@ -42,15 +42,15 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
         if let Some(key) = step_result.key_pressed {
             match key {
                 'q' | '\u{3}' => return,
-                's' => { fast_model.save(true); return; }
+                's' => { drop(graph); fast_model.save(false); return; }
                 _ => ()
             }
         };
 
-        // if step_result.experience.done && step_result.fruits_eaten > best_fruits_eaten {
-        //     best_fruits_eaten = step_result.fruits_eaten;
-        //     fast_model.save(true);
-        // }
+        if step_result.experience.done && step_result.fruits_eaten > best_fruits_eaten {
+            best_fruits_eaten = step_result.fruits_eaten;
+            fast_model.save(true);
+        }
         memory.push(step_result.experience);
 
         // Sample batch from memory
@@ -85,10 +85,10 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     }
 }
 
-pub fn test_dqn(hyperparameters: DqnHyperparameters) {
+pub fn dqn_test(hyperparameters: DqnHyperparameters) {
     let mut model = MLP::new(&hyperparameters.model_hyperparameters);
     let mut state = State::new();
-    let mut visualization = FruitsGraph::new(10).unwrap();
+    let mut graph = SnakeTestGraph::new(60).unwrap();
     model.load(true);
 
     // Episode loop
@@ -101,8 +101,8 @@ pub fn test_dqn(hyperparameters: DqnHyperparameters) {
             .unwrap().0;
 
         // Step environment
-        let step_result = state.step(action, Some(&mut visualization));
-        // std::thread::sleep(Duration::from_millis(100));
+        let step_result = state.step(action, Some(&mut graph));
+        std::thread::sleep(Duration::from_millis(30));
         if matches!(step_result.key_pressed, Some('q' | '\u{3}')) || step_result.experience.done { return; }
     }
 }

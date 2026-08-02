@@ -60,8 +60,11 @@ impl State {
         self.episode_len += 1;
         let dir = match action {
             0=> -HEADING_CHANGE_AMOUNT,
-            // 1 => 0.0,
             1 => HEADING_CHANGE_AMOUNT,
+            2=> -HEADING_CHANGE_AMOUNT * 2.0,
+            3 => HEADING_CHANGE_AMOUNT * 2.0,
+            4=> -HEADING_CHANGE_AMOUNT * 3.0,
+            5 => HEADING_CHANGE_AMOUNT * 3.0,
             _ => panic!("wth action?"),
         };
 
