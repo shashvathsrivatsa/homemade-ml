@@ -10,9 +10,8 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
     let mut graph = SnakeVisualization::new(60).unwrap();
     let mut state = State::new();
     let mut memory = Memory::new(hyperparameters.memory_capacity, hyperparameters.batch_size);
-    let mut best_fruits_eaten = 0;
 
-    // fast_model.load(true);
+    fast_model.load(true);
     fast_model.copy_weights_to(&mut slow_model);
 
     // Warmup (populate memory)
@@ -48,10 +47,10 @@ pub fn dqn_train(hyperparameters: DqnHyperparameters) {
             }
         };
 
-        if step_result.experience.done && step_result.fruits_eaten > best_fruits_eaten {
-            best_fruits_eaten = step_result.fruits_eaten;
-            fast_model.save(true);
-        }
+        // if step_result.experience.done && step_result.fruits_eaten > best_fruits_eaten {
+        //     best_fruits_eaten = step_result.fruits_eaten;
+        //     fast_model.save(true);
+        // }
         memory.push(step_result.experience);
 
         // Sample batch from memory

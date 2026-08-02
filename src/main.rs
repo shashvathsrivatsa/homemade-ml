@@ -19,7 +19,7 @@ fn main() {
         model_hyperparameters: mlp_hyperparameters,
         memory_capacity: 100_000,
         min_experiences: 10_000,
-        decay: FlatDecay { min_eps: 0.2 },
+        decay: FlatDecay { min_eps: 0.1 },
         eps_min: 0.01,
         batch_size: 512,
         gamma: 0.99,

@@ -141,22 +141,24 @@ impl State {
 
     pub fn to_vec(&self) -> Vec<f32> {
         let rays = &[-90.0, -45.0, 0.0, 45.0, 90.0];
+        let max_wall_ray = WINDOW_SIZE / 10.0;
+        let max_body_ray = WINDOW_SIZE / 10.0;
 
         let polar_to_fruit = polar_to_point(self.segments[0], self.heading, self.fruit_coords);
 
         let rays_to_wall: Vec<f32> = rays.iter().map(|ray| {
             let heading = clamp_deg(self.heading + ray);
             let wall_segments = WALLS.windows(2).map(|w| (w[0], w[1]));
-            let ray_dist = raycast(self.segments[0], heading, WINDOW_SIZE * 2.0, wall_segments);
-            ray_dist / WINDOW_SIZE / 2.0
+            let ray_dist = raycast(self.segments[0], heading, max_wall_ray, wall_segments);
+            ray_dist / max_wall_ray
         }).collect();
 
         let rays_to_body: Vec<f32> = rays.iter().map(|ray| {
             let heading = clamp_deg(self.heading + ray);
-            let body_segments = self.segments.iter().skip(2).collect::<Vec<_>>();
+            let body_segments = self.segments.iter().skip(1).collect::<Vec<_>>();
             let body_segments = body_segments.windows(2).map(|w| (*w[0], *w[1]));
-            let ray_dist = raycast(self.segments[0], heading, WINDOW_SIZE * 2.0, body_segments);
-            ray_dist / WINDOW_SIZE / 2.0
+            let ray_dist = raycast(self.segments[0], heading, max_body_ray, body_segments);
+            ray_dist / max_body_ray
         }).collect();
 
         vec![
